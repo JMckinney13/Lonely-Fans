@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live – Lonely Fans</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .live-layout { display: grid; grid-template-columns: 1fr 320px; gap: 1rem; max-width: 1100px; margin: 1rem auto; padding: 0 1rem; }
+    @media (max-width: 800px) { .live-layout { grid-template-columns: 1fr; } }
+    .video-area { background: #000; border-radius: 12px; aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; color: #666; position: relative; }
+    .video-area .live-badge { position: absolute; top: 12px; left: 12px; background: #ff6b6b; color: white; padding: 4px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: 700; }
+    .side-panel { background: var(--card); border-radius: 12px; padding: 1rem; display: flex; flex-direction: column; height: 70vh; }
+    .goal-box { background: #1a1a22; border: 1px solid #333; border-radius: 10px; padding: 0.8rem; margin-bottom: 1rem; }
+    .progress-bar { height: 8px; background: #333; border-radius: 4px; overflow: hidden; margin: 0.5rem 0; }
+    .progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.3s; }
+    .chat-messages { flex: 1; overflow-y: auto; font-size: 0.9rem; margin-bottom: 0.5rem; }
+    .chat-messages div { margin-bottom: 0.4rem; }
+    .chat-input { display: flex; gap: 0.4rem; }
+    .chat-input input { flex: 1; }
+  </style>
+</head>
+<body>
+  <header class="dash-header">
+    <div class="logo-row">
+      <img src="assets/logo.jpg" alt="Lonely Fans" class="logo-img">
+      <div class="logo">Lonely Fans</div>
+    </div>
+    <div>
+      <a href="dashboard.html">Dashboard</a>
+      <button onclick="LonelyFansAuth.logout()" style="width:auto; margin-left:1rem;">Logout</button>
+    </div>
+  </header>
+
+  <div class="live-layout">
+    <div>
+      <div class="video-area" id="videoArea">
+        <div class="live-badge">LIVE</div>
+        Simulated stream – creator is on camera
+      </div>
+      <div style="margin-top:1rem" id="creatorControls"></div>
+    </div>
+    <div class="side-panel">
+      <div class="goal-box" id="goalBox">No active goal</div>
+      <div class="chat-messages" id="chat"></div>
+      <div class="chat-input">
+        <input type="text" id="chatInput" placeholder="Say something...">
+        <button style="width:auto; margin:0" onclick="sendChat()">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="auth.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const creatorId = params.get('id');
+    const session = LonelyFansAuth.getSession();
+    if (!creatorId) { alert('No creator'); location.href = 'index.html'; }
+
+    const isCreator = session && session.id === creatorId;
+
+    function renderGoal() {
+      const goal = LonelyFansAuth.getCreatorGoal(creatorId);
+      const box = document.getElementById('goalBox');
+      if (!goal) {
+        box.innerHTML = isCreator
+          ? `<form onsubmit="setGoal(event)"><input id="goalText" placeholder="Goal text" required><input id="goalTarget" type="number" placeholder="Target SparkCoins" required><button>Set Goal</button></form>`
+          : 'No active goal';
+        return;
+      }
+      const pct = Math.min(100, (goal.current / goal.target) * 100);
+      box.innerHTML = `
+        <strong>${goal.text}</strong>
+        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+        <div>${goal.current.toLocaleString()} / ${goal.target.toLocaleString()} SparkCoins</div>
+        ${goal.completed ? '<div class="positive">Goal completed!</div>' : ''}
+        ${!isCreator && !goal.completed ? `
+          <div style="margin-top:0.5rem">
+            <input type="number" id="tipAmount" placeholder="Amount" style="width:100px">
+            <button style="width:auto" onclick="tip()">Tip</button>
+          </div>` : ''}
+      `;
+    }
+
+    function setGoal(e) {
+      e.preventDefault();
+      const text = document.getElementById('goalText').value;
+      const target = parseInt(document.getElementById('goalTarget').value, 10);
+      LonelyFansAuth.setCreatorGoal(creatorId, text, target);
+      renderGoal();
+    }
+
+    function tip() {
+      if (!session) { alert('Log in first'); return; }
+      const amount = parseInt(document.getElementById('tipAmount').value, 10);
+      if (!amount || amount < 1) return;
+      try {
+        LonelyFansAuth.tipGoal(session.id, creatorId, amount);
+        renderGoal();
+      } catch (err) { alert(err.message); }
+    }
+
+    function renderChat() {
+      const msgs = LonelyFansAuth.getChatMessages(creatorId);
+      const el = document.getElementById('chat');
+      el.innerHTML = msgs.map(m => `<div><strong>${m.username}:</strong> ${m.text}</div>`).join('');
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function sendChat() {
+      if (!session) { alert('Log in to chat'); return; }
+      const input = document.getElementById('chatInput');
+      const text = input.value.trim();
+      if (!text) return;
+      const name = session.email.split('@')[0];
+      LonelyFansAuth.addChatMessage(creatorId, name, text);
+      input.value = '';
+      renderChat();
+    }
+
+    document.getElementById('chatInput').addEventListener('keypress', e => {
+      if (e.key === 'Enter') sendChat();
+    });
+
+    // Mark live when creator opens the page
+    if (isCreator) LonelyFansAuth.setLive(creatorId, true);
+
+    renderGoal();
+    renderChat();
+    setInterval(renderChat, 2000); // simple poll for multi-tab demo
+    setInterval(renderGoal, 2000);
+  </script>
+</body>
+</html>

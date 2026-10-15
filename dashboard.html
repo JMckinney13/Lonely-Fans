@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard – Lonely Fans</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="dash-header">
+    <div class="logo-row">
+      <img src="assets/logo.jpg" alt="Lonely Fans" class="logo-img">
+      <div class="logo">Lonely Fans</div>
+    </div>
+    <div>
+      <span id="userInfo"></span>
+      <button onclick="LonelyFansAuth.logout()" style="width:auto; margin-left:1rem;">Logout</button>
+    </div>
+  </header>
+  <main class="container">
+    <h1>Welcome</h1>
+    <div id="roleContent"></div>
+  </main>
+  <script src="auth.js"></script>
+  <script>
+    const session = LonelyFansAuth.getSession();
+    if (!session) {
+      window.location.href = 'login.html';
+    }
+    if (!session.ageVerified) {
+      window.location.href = 'age-verify.html';
+    }
+
+    document.getElementById('userInfo').textContent = `${session.email} (${session.role})`;
+
+    const content = document.getElementById('roleContent');
+    if (session.role === 'creator') {
+      content.innerHTML = `
+        <h2>Creator Dashboard</h2>
+        <p>Your customizable page and streaming tools will appear here in later phases.</p>
+        <p><a href="customize.html"><button>Customize Your Page</button></a></p>
+        <p><a href="tiers.html"><button class="secondary">Manage Subscription Tiers</button></a></p>
+        <p><a href="live.html?id=${session.id}"><button>Go Live</button></a></p>
+        <p><a href="earnings.html"><button class="secondary">Earnings & Payouts</button></a></p>
+        <p><a href="attest.html"><button class="secondary">2257 Attestation</button></a></p>
+        <p><a href="report.html"><button class="secondary">Report Content</button></a></p>
+        <ul>
+          <li>Profile customization (Phase 2) ✅</li>
+          <li>Go Live & Goals (Phase 5)</li>
+          <li>Earnings & Payouts (Phase 6)</li>
+        </ul>
+      `;
+    } else {
+      content.innerHTML = `
+        <h2>Fan Dashboard</h2>
+        <p>Browse creators, manage subscriptions, and your SparkCoins will live here.</p>
+        <p><a href="browse.html"><button>Browse Creators</button></a></p>
+        <p><a href="wallet.html"><button>Open SparkCoins Wallet</button></a></p>
+        <p><a href="report.html"><button class="secondary">Report Content</button></a></p>
+        <ul>
+          <li>SparkCoins wallet (Phase 3) ✅</li>
+          <li>Subscriptions (Phase 4)</li>
+          <li>Live rooms (Phase 5)</li>
+        </ul>
+      `;
+    }
+  </script>
+</body>
+</html>

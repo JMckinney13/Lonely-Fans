@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Creator Page – Lonely Fans</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="dash-header">
+    <div class="logo-row">
+      <img src="assets/logo.jpg" alt="Lonely Fans" class="logo-img">
+      <div class="logo">Lonely Fans</div>
+    </div>
+    <div>
+      <a href="index.html">Home</a>
+    </div>
+  </header>
+  <main id="creatorPage" class="creator-page">
+    <p>Loading creator...</p>
+  </main>
+  <script src="auth.js"></script>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const creatorId = params.get('id');
+    const session = LonelyFansAuth.getSession();
+
+    if (!creatorId) {
+      document.getElementById('creatorPage').innerHTML = '<p>No creator specified.</p>';
+    } else {
+    (async () => {
+      const profile = await LonelyFansAuth.getProfile(creatorId);
+      if (!profile) {
+        document.getElementById('creatorPage').innerHTML = '<p>Creator not found.</p>';
+        return;
+      }
+      const tiers = LonelyFansAuth.getCreatorTiers(creatorId);
+      const subscribed = session && LonelyFansAuth.isSubscribed(session.id, creatorId);
+
+      const page = document.getElementById('creatorPage');
+      page.style.setProperty('--theme', profile.themeColor || '#ff6b6b');
+      page.style.setProperty('--accent', profile.accentColor || '#ff8e8e');
+      page.className = 'creator-page layout-' + (profile.layout || 'classic');
+
+      let tiersHtml = '';
+      if (tiers.length === 0) {
+        tiersHtml = '<p class="note">No subscription tiers set yet.</p>';
+      } else {
+        tiersHtml = tiers.map(t => `
+          <div class="tier-card">
+            <h3>${t.name}</h3>
+            <div class="price">${t.price} SparkCoins / month</div>
+            <ul>${(t.perks || []).map(p => `<li>${p}</li>`).join('')}</ul>
+            ${subscribed ? '<button disabled>Subscribed</button>' : 
+              `<button onclick="doSubscribe('${t.id}', ${t.price})">Subscribe</button>`}
+          </div>
+        `).join('');
+      }
+
+      page.innerHTML = `
+        ${profile.bannerUrl ? `<div class="banner" style="background-image:url('${profile.bannerUrl}')"></div>` : ''}
+        <div class="info-card">
+          <h1>${profile.displayName || 'Creator'}</h1>
+          <p>${profile.bio || ''}</p>
+          ${LonelyFansAuth.isLive(creatorId) ? `<p><a href="live.html?id=${creatorId}"><button>Watch Live</button></a></p>` : ''}
+          <h2>Subscription Tiers</h2>
+          <div class="tiers">${tiersHtml}</div>
+        </div>
+      `;
+      document.title = (profile.displayName || 'Creator') + ' – Lonely Fans';
+    })();
+
+    function doSubscribe(tierId, price) {
+      if (!session) {
+        alert('Please log in to subscribe');
+        location.href = 'login.html';
+        return;
+      }
+      try {
+        LonelyFansAuth.subscribe(session.id, creatorId, tierId, price);
+        alert('Subscribed!');
+        location.reload();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+  </script>
+</body>
+</html>

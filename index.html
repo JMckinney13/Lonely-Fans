@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lonely Fans – SparkCoins</title>
+  <meta name="description" content="Lonely Fans – Live streaming and subscriptions powered by SparkCoins. Creators set the rules. Fans get closer.">
+  <meta property="og:title" content="Lonely Fans">
+  <meta property="og:description" content="Live streaming and subscriptions powered by SparkCoins.">
+  <style>
+    :root {
+      --bg: #0a0e17;
+      --card: #141824;
+      --accent: #ff6b6b;
+      --accent-soft: #ff8e8e;
+      --text: #f5f5f7;
+      --muted: #a0a0b0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      padding: 1.5rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #2a2a35;
+    }
+    .logo {
+      font-size: 1.6rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, var(--accent), var(--accent-soft));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .age-gate {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.92);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      pointer-events: auto;
+    }
+    .age-gate.hidden {
+      display: none !important;
+      pointer-events: none;
+    }
+    .age-gate-card {
+      background: var(--card);
+      padding: 2.5rem;
+      border-radius: 16px;
+      max-width: 420px;
+      text-align: center;
+      border: 1px solid #333;
+    }
+    .age-gate h2 { margin-bottom: 1rem; font-size: 1.5rem; }
+    .age-gate p { color: var(--muted); margin-bottom: 1.5rem; line-height: 1.5; }
+    button, .btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 0.8rem 1.6rem;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      margin: 0.3rem;
+      text-decoration: none;
+      display: inline-block;
+    }
+    button.secondary, .btn.secondary {
+      background: transparent;
+      border: 1px solid #555;
+      color: var(--text);
+    }
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 3rem 1.5rem;
+    }
+    h1 { font-size: 3rem; margin-bottom: 1rem; }
+    .tagline { font-size: 1.25rem; color: var(--muted); max-width: 600px; margin-bottom: 2rem; }
+    .cta-group { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+    .coin-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: #2a1a25;
+      padding: 0.4rem 0.8rem;
+      border-radius: 999px;
+      font-weight: 600;
+      color: var(--accent-soft);
+      margin-top: 1.5rem;
+    }
+    footer {
+      padding: 1.5rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+      border-top: 1px solid #2a2a35;
+    }
+    footer a { color: var(--accent-soft); text-decoration: none; margin: 0 0.5rem; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <!-- Age Gate -->
+  <div id="ageGate" class="age-gate">
+    <div class="age-gate-card">
+      <h2>Adults Only</h2>
+      <p>Lonely Fans contains explicit adult content. You must be 18 years or older to enter.</p>
+      <p style="font-size: 0.9rem;">This is a prototype. Full commercial age verification (ID / facial estimation) will be required before launch.</p>
+      <div>
+        <button onclick="enterSite()">I am 18 or older</button>
+        <button class="secondary" onclick="leaveSite()">Leave</button>
+      </div>
+    </div>
+  </div>
+
+  <header>
+    <div class="logo-row">
+      <img src="assets/logo.jpg" alt="Lonely Fans" class="logo-img">
+      <div class="logo">Lonely Fans</div>
+    </div>
+    <div>SparkCoins</div>
+  </header>
+
+  <main>
+    <h1>Where lonely fans become close.</h1>
+    <p class="tagline">
+      Creators stream, customize their space, and set goals. Fans subscribe with SparkCoins and fund the moments that matter.
+    </p>
+    <div class="cta-group">
+      <a href="register.html" class="btn">Become a Creator</a>
+      <a href="register.html" class="btn secondary">Join as Fan</a>
+    </div>
+    <div class="coin-badge">⚡ Powered by SparkCoins</div>
+  </main>
+
+  <footer>
+    <a href="#">Privacy</a>
+    <a href="#">Terms</a>
+    <a href="#">2257</a>
+    <a href="#">Age Verification</a>
+    <div style="margin-top: 0.5rem;">© 2026 Lonely Fans. Prototype – Not for production use.</div>
+  </footer>
+
+  <script>
+    function enterSite() {
+      const gate = document.getElementById('ageGate');
+      gate.classList.add('hidden');
+      localStorage.setItem('lf_age_ack', 'true');
+    }
+    function leaveSite() {
+      window.location.href = 'https://www.google.com';
+    }
+    // Soft remember for prototype only
+    if (localStorage.getItem('lf_age_ack') === 'true') {
+      document.getElementById('ageGate').classList.add('hidden');
+    }
+  </script>
+</body>
+</html>

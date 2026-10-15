@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Browse Creators – Lonely Fans</title>
+  <meta name="description" content="Discover creators on Lonely Fans. Subscribe with SparkCoins and join live streams.">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .creator-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
+    .creator-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .creator-card .banner { height: 100px; background: #1a1520; }
+    .creator-card .info { padding: 1rem; }
+    .creator-card h3 { margin: 0 0 0.4rem; }
+  </style>
+</head>
+<body>
+  <header class="dash-header">
+    <div class="logo-row">
+      <img src="assets/logo.jpg" alt="Lonely Fans" class="logo-img">
+      <div class="logo">Lonely Fans</div>
+    </div>
+    <div>
+      <a href="dashboard.html">Dashboard</a>
+      <button onclick="LonelyFansAuth.logout()" style="width:auto; margin-left:1rem;">Logout</button>
+    </div>
+  </header>
+  <main class="container wide">
+    <h1>Browse Creators</h1>
+    <p class="note">Public creator pages on this prototype.</p>
+    <div id="grid" class="creator-grid"></div>
+  </main>
+  <script src="auth.js"></script>
+  <script>
+    const session = LonelyFansAuth.getSession();
+    if (!session) location.href = 'login.html';
+
+    const users = LonelyFansAuth.getUsers();
+    const creators = users.filter(u => u.role === 'creator');
+    const grid = document.getElementById('grid');
+
+    if (creators.length === 0) {
+      grid.innerHTML = '<p class="note">No creators yet. Be the first!</p>';
+    } else {
+      grid.innerHTML = creators.map(c => {
+        const profile = LonelyFansAuth.getProfile(c.id) || {};
+        const live = LonelyFansAuth.isLive(c.id);
+        return `
+          <div class="creator-card">
+            <div class="banner" style="background:${profile.themeColor || '#ff6b6b'}"></div>
+            <div class="info">
+              <h3>${profile.displayName || c.email.split('@')[0]}</h3>
+              <p class="note">${(profile.bio || '').slice(0, 80)}${profile.bio && profile.bio.length > 80 ? '…' : ''}</p>
+              ${live ? '<span class="positive">LIVE</span>' : ''}
+              <p><a href="creator.html?id=${c.id}"><button>View Page</button></a></p>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  </script>
+</body>
+</html>

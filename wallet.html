@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SparkCoins Wallet – Lonely Fans</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="dash-header">
+    <div class="logo-row">
+      <img src="assets/logo.jpg" alt="Lonely Fans" class="logo-img">
+      <div class="logo">Lonely Fans</div>
+    </div>
+    <div>
+      <a href="dashboard.html">Dashboard</a>
+      <button onclick="LonelyFansAuth.logout()" style="width:auto; margin-left:1rem;">Logout</button>
+    </div>
+  </header>
+  <main class="container">
+    <h1>SparkCoins Wallet</h1>
+    <div class="balance-card">
+      <div class="balance-label">Current Balance</div>
+      <div class="balance-amount" id="balance">0</div>
+      <div class="balance-unit">SparkCoins</div>
+    </div>
+
+    <h2>Buy SparkCoins</h2>
+    <p class="note">Prototype purchases are simulated. No real payment is processed.</p>
+    <div class="packs">
+      <button class="pack" onclick="buyPack(100, 9.99)">100 SparkCoins<br><small>$9.99</small></button>
+      <button class="pack" onclick="buyPack(500, 39.99)">500 SparkCoins<br><small>$39.99</small></button>
+      <button class="pack" onclick="buyPack(1200, 79.99)">1,200 SparkCoins<br><small>$79.99</small></button>
+      <button class="pack" onclick="buyPack(3000, 149.99)">3,000 SparkCoins<br><small>$149.99</small></button>
+    </div>
+
+    <h2>Recent Transactions</h2>
+    <div id="transactions" class="tx-list"></div>
+  </main>
+  <script src="auth.js"></script>
+  <script>
+    const session = LonelyFansAuth.getSession();
+    if (!session) window.location.href = 'login.html';
+    if (!session.ageVerified) window.location.href = 'age-verify.html';
+
+    async function refresh() {
+      const balance = await LonelyFansAuth.getBalance(session.id);
+      document.getElementById('balance').textContent = balance.toLocaleString();
+      const txs = await LonelyFansAuth.getUserTransactions(session.id);
+      const list = document.getElementById('transactions');
+      if (txs.length === 0) {
+        list.innerHTML = '<p class="note">No transactions yet.</p>';
+      } else {
+        list.innerHTML = txs.slice(0, 10).map(tx => `
+          <div class="tx">
+            <div>${tx.description}</div>
+            <div class="${tx.amount > 0 ? 'positive' : 'negative'}">${tx.amount > 0 ? '+' : ''}${tx.amount.toLocaleString()}</div>
+          </div>
+        `).join('');
+      }
+    }
+
+    async function buyPack(amount, price) {
+      await LonelyFansAuth.buyCoins(amount, price);
+      await refresh();
+      alert(`Added ${amount} SparkCoins to your wallet!`);
+    }
+
+    refresh();
+  </script>
+</body>
+</html>

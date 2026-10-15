@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Earnings – Lonely Fans</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="dash-header">
+    <div class="logo-row">
+      <img src="assets/logo.jpg" alt="Lonely Fans" class="logo-img">
+      <div class="logo">Lonely Fans</div>
+    </div>
+    <div>
+      <a href="dashboard.html">Dashboard</a>
+      <button onclick="LonelyFansAuth.logout()" style="width:auto; margin-left:1rem;">Logout</button>
+    </div>
+  </header>
+  <main class="container">
+    <h1>Creator Earnings</h1>
+    <div class="balance-card">
+      <div class="balance-label">Available for Payout</div>
+      <div class="balance-amount" id="available">0</div>
+      <div class="balance-unit">SparkCoins</div>
+    </div>
+
+    <h2>Request Payout</h2>
+    <p class="note">Minimum 50 SparkCoins. In production this connects to an adult-friendly processor (CCBill, Segpay, etc.) and requires identity verification + tax forms.</p>
+    <form id="payoutForm">
+      <label>Amount (SparkCoins)</label>
+      <input type="number" id="payoutAmount" min="50" required>
+      <button type="submit">Request Payout</button>
+    </form>
+    <p id="status" class="message"></p>
+
+    <h2>Payout History</h2>
+    <div id="payoutHistory" class="tx-list"></div>
+  </main>
+  <script src="auth.js"></script>
+  <script>
+    const session = LonelyFansAuth.getSession();
+    if (!session || session.role !== 'creator') location.href = 'dashboard.html';
+
+    function refresh() {
+      const available = LonelyFansAuth.getCreatorEarnings(session.id);
+      document.getElementById('available').textContent = available.toLocaleString();
+
+      const history = LonelyFansAuth.getCreatorPayouts(session.id);
+      const el = document.getElementById('payoutHistory');
+      if (history.length === 0) {
+        el.innerHTML = '<p class="note">No payouts yet.</p>';
+      } else {
+        el.innerHTML = history.map(p => `
+          <div class="tx">
+            <div>${new Date(p.requestedAt).toLocaleDateString()} – ${p.status}</div>
+            <div class="positive">${p.amount.toLocaleString()}</div>
+          </div>
+        `).join('');
+      }
+    }
+
+    document.getElementById('payoutForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const amount = parseInt(document.getElementById('payoutAmount').value, 10);
+      try {
+        LonelyFansAuth.requestPayout(session.id, amount);
+        document.getElementById('status').textContent = 'Payout requested and completed (prototype).';
+        document.getElementById('payoutForm').reset();
+        refresh();
+      } catch (err) {
+        document.getElementById('status').textContent = err.message;
+      }
+    });
+
+    refresh();
+  </script>
+</body>
+</html>

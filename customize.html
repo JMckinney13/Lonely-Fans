@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Customize Your Page – Lonely Fans</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="dash-header">
+    <div class="logo-row">
+      <img src="assets/logo.jpg" alt="Lonely Fans" class="logo-img">
+      <div class="logo">Lonely Fans</div>
+    </div>
+    <div>
+      <a href="dashboard.html">Dashboard</a>
+      <button onclick="LonelyFansAuth.logout()" style="width:auto; margin-left:1rem;">Logout</button>
+    </div>
+  </header>
+  <main class="container wide">
+    <h1>Customize Your Creator Page</h1>
+    <p class="note">Changes are saved locally in this prototype. Live preview updates as you type.</p>
+
+    <div class="editor-layout">
+      <form id="profileForm" class="editor-form">
+        <label>Display Name</label>
+        <input type="text" id="displayName" required>
+
+        <label>Bio</label>
+        <textarea id="bio" rows="4"></textarea>
+
+        <label>Banner Image URL</label>
+        <input type="url" id="bannerUrl" placeholder="https://example.com/banner.jpg">
+
+        <label>Theme Color</label>
+        <input type="color" id="themeColor" value="#ff4d8d">
+
+        <label>Accent Color</label>
+        <input type="color" id="accentColor" value="#ff8ab3">
+
+        <label>Layout Style</label>
+        <select id="layout">
+          <option value="classic">Classic</option>
+          <option value="minimal">Minimal</option>
+          <option value="bold">Bold</option>
+        </select>
+
+        <button type="submit">Save Changes</button>
+        <p id="saveStatus" class="message"></p>
+      </form>
+
+      <div class="preview-panel">
+        <h3>Live Preview</h3>
+        <div id="preview" class="creator-preview"></div>
+        <p><a id="publicLink" href="#" target="_blank">Open public page →</a></p>
+      </div>
+    </div>
+  </main>
+  <script src="auth.js"></script>
+  <script>
+    const session = LonelyFansAuth.getSession();
+    if (!session || session.role !== 'creator') {
+      window.location.href = 'dashboard.html';
+    }
+
+    const session = LonelyFansAuth.getSession();
+    if (!session || session.role !== 'creator') {
+      window.location.href = 'dashboard.html';
+    }
+
+    (async () => {
+      const profile = await LonelyFansAuth.getProfile(session.id) || {};
+      document.getElementById('displayName').value = profile.displayName || '';
+      document.getElementById('bio').value = profile.bio || '';
+      document.getElementById('bannerUrl').value = profile.bannerUrl || '';
+      document.getElementById('themeColor').value = profile.themeColor || '#ff4d8d';
+      document.getElementById('accentColor').value = profile.accentColor || '#ff8ab3';
+      document.getElementById('layout').value = profile.layout || 'classic';
+      renderPreview();
+    })();
+
+    function renderPreview() {
+      const data = {
+        displayName: document.getElementById('displayName').value,
+        bio: document.getElementById('bio').value,
+        bannerUrl: document.getElementById('bannerUrl').value,
+        themeColor: document.getElementById('themeColor').value,
+        accentColor: document.getElementById('accentColor').value,
+        layout: document.getElementById('layout').value
+      };
+      const preview = document.getElementById('preview');
+      preview.style.setProperty('--theme', data.themeColor);
+      preview.style.setProperty('--accent', data.accentColor);
+      preview.className = 'creator-preview layout-' + data.layout;
+      preview.innerHTML = `
+        ${data.bannerUrl ? `<div class="banner" style="background-image:url('${data.bannerUrl}')"></div>` : '<div class="banner placeholder">Banner</div>'}
+        <div class="info">
+          <h2>${data.displayName || 'Your Name'}</h2>
+          <p>${data.bio || 'Your bio appears here.'}</p>
+        </div>
+      `;
+    }
+
+    ['displayName','bio','bannerUrl','themeColor','accentColor','layout'].forEach(id => {
+      document.getElementById(id).addEventListener('input', renderPreview);
+    });
+    renderPreview();
+
+    document.getElementById('publicLink').href = 'creator.html?id=' + session.id;
+
+    document.getElementById('profileForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = {
+        displayName: document.getElementById('displayName').value,
+        bio: document.getElementById('bio').value,
+        bannerUrl: document.getElementById('bannerUrl').value,
+        themeColor: document.getElementById('themeColor').value,
+        accentColor: document.getElementById('accentColor').value,
+        layout: document.getElementById('layout').value
+      };
+      await LonelyFansAuth.saveProfile(session.id, data);
+      document.getElementById('saveStatus').textContent = 'Saved!';
+      setTimeout(() => document.getElementById('saveStatus').textContent = '', 2000);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Age Verification – Lonely Fans</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Age Verification</h1>
+    <p>To access Lonely Fans you must verify that you are 18 or older.</p>
+    <p class="note">Prototype mode: In production this will use a real provider (Yoti, Veriff, VerifyMy, etc.) with ID scan or facial age estimation.</p>
+    
+    <div id="verifyOptions">
+      <button onclick="simulateVerify('id')">Simulate Government ID Check</button>
+      <button onclick="simulateVerify('facial')">Simulate Facial Age Estimation</button>
+    </div>
+    
+    <p id="status" class="message"></p>
+    <p><a href="login.html">Back to login</a></p>
+  </div>
+  <script src="auth.js"></script>
+  <script>
+    const session = LonelyFansAuth.getSession();
+    if (!session) {
+      window.location.href = 'login.html';
+    }
+
+    function simulateVerify(method) {
+      document.getElementById('status').textContent = `Verifying via ${method}... (simulated)`;
+      setTimeout(() => {
+        LonelyFansAuth.markAgeVerified(session.id);
+        document.getElementById('status').textContent = 'Verified! Redirecting to dashboard...';
+        setTimeout(() => window.location.href = 'dashboard.html', 800);
+      }, 1500);
+    }
+  </script>
+</body>
+</html>

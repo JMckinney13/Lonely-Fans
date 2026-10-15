@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Report Content – Lonely Fans</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="dash-header">
+    <div class="logo-row">
+      <img src="assets/logo.jpg" alt="Lonely Fans" class="logo-img">
+      <div class="logo">Lonely Fans</div>
+    </div>
+    <div>
+      <a href="dashboard.html">Dashboard</a>
+      <button onclick="LonelyFansAuth.logout()" style="width:auto; margin-left:1rem;">Logout</button>
+    </div>
+  </header>
+  <main class="container">
+    <h1>Report Content or User</h1>
+    <p class="note">Reports are reviewed by the moderation team. In this prototype they are stored locally.</p>
+    <form id="reportForm">
+      <label>Report Type</label>
+      <select id="type" required>
+        <option value="user">User / Creator</option>
+        <option value="stream">Live Stream</option>
+        <option value="content">Posted Content</option>
+        <option value="other">Other</option>
+      </select>
+      <label>Target (username or page ID)</label>
+      <input type="text" id="target" required>
+      <label>Reason</label>
+      <textarea id="reason" rows="4" required placeholder="Describe the issue..."></textarea>
+      <button type="submit">Submit Report</button>
+    </form>
+    <p id="status" class="message"></p>
+  </main>
+  <script src="auth.js"></script>
+  <script>
+    const session = LonelyFansAuth.getSession();
+    if (!session) location.href = 'login.html';
+    document.getElementById('reportForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      LonelyFansAuth.submitReport(
+        session.id,
+        document.getElementById('target').value,
+        document.getElementById('type').value,
+        document.getElementById('reason').value
+      );
+      document.getElementById('status').textContent = 'Report submitted. Thank you.';
+      document.getElementById('reportForm').reset();
+    });
+  </script>
+</body>
+</html>
