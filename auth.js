@@ -127,6 +127,10 @@ async function getBalance(userId) {
   }
 }
 
+function getUserTransactions(userId) {
+  return getTransactions().filter(tx => tx.userId === userId);
+}
+
 function addTransaction(userId, type, amount, description) {
   const txs = getTransactions();
   const tx = {
