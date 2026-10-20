@@ -62,7 +62,11 @@
         const live = LonelyFansAuth.isLive(c.id);
         return `
           <div class="creator-card">
-            <div class="banner" style="background:${profile.themeColor || '#ff6b6b'}"></div>
+            <div class="banner" style="background:${profile.themeColor || '#ff6b6b'}; display:flex; align-items:center; justify-content:center;">
+              <div style="width:48px;height:48px;border-radius:50%;background:#0e121c;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.2rem;color:var(--accent-soft);">
+                ${(profile.displayName || c.email || '?')[0].toUpperCase()}
+              </div>
+            </div>
             <div class="info">
               <h3>${profile.displayName || c.email.split('@')[0]}</h3>
               <p class="note">${(profile.bio || 'No bio').slice(0, 70)}${(profile.bio || '').length > 70 ? '…' : ''}</p>

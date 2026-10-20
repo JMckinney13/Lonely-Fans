@@ -146,6 +146,11 @@
       <a href="register.html" class="btn secondary">Join as Fan</a>
     </div>
     <div class="coin-badge">⚡ Powered by SparkCoins</div>
+
+    <div id="liveNow" style="margin-top:2.5rem;max-width:800px;margin-left:auto;margin-right:auto;padding:0 1rem;">
+      <h2 style="font-size:1.2rem;margin-bottom:0.8rem">Live Now</h2>
+      <div id="liveGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:0.75rem;"></div>
+    </div>
   </main>
 
   <footer>
@@ -169,6 +174,31 @@
     if (localStorage.getItem('lf_age_ack') === 'true') {
       document.getElementById('ageGate').classList.add('hidden');
     }
+
+    // Live Now strip
+    (function() {
+      const users = JSON.parse(localStorage.getItem('lf_users') || '[]');
+      const live = users.filter(u => u.role === 'creator' && localStorage.getItem('lf_live_' + u.id) === 'true');
+      const grid = document.getElementById('liveGrid');
+      if (!live.length) {
+        grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;padding:1rem">No one is live right now.</div>';
+        return;
+      }
+      grid.innerHTML = live.slice(0, 6).map(c => {
+        const profile = JSON.parse(localStorage.getItem('lf_profile_' + c.id) || '{}');
+        return `
+          <a href="live.html?id=${c.id}" style="text-decoration:none;color:inherit">
+            <div style="background:#141824;border:1px solid #2a2a35;border-radius:10px;padding:0.8rem;text-align:center">
+              <div style="width:40px;height:40px;border-radius:50%;background:#0e121c;margin:0 auto 0.4rem;display:flex;align-items:center;justify-content:center;font-weight:700;color:#ff8e8e">
+                ${(profile.displayName || c.email || '?')[0].toUpperCase()}
+              </div>
+              <div style="font-size:0.9rem;font-weight:600">${profile.displayName || c.email.split('@')[0]}</div>
+              <div style="color:#ff6b6b;font-size:0.75rem;margin-top:0.2rem">● LIVE</div>
+            </div>
+          </a>
+        `;
+      }).join('');
+    })();
   </script>
 </body>
 </html>

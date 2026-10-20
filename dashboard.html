@@ -33,6 +33,13 @@
 
     document.getElementById('userInfo').textContent = `${session.email} (${session.role})`;
 
+    // Daily streak
+    const streak = LonelyFansAuth.claimDailyStreak(session.id);
+    if (streak.claimed) {
+      document.getElementById('roleContent').insertAdjacentHTML('beforebegin',
+        `<div class="message success">Daily streak claimed! Day ${streak.streak} — +10 SparkCoins</div>`);
+    }
+
     const content = document.getElementById('roleContent');
     if (session.role === 'creator') {
       content.innerHTML = `

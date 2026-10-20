@@ -35,6 +35,7 @@
     </div>
 
     <h2>Recent Transactions</h2>
+    <p id="txMessage" class="message"></p>
     <div id="transactions" class="tx-list"></div>
   </main>
   <script src="auth.js"></script>
@@ -68,9 +69,17 @@
     }
 
     async function buyPack(amount, price) {
-      await LonelyFansAuth.buyCoins(amount, price);
-      await refresh();
-      alert(`Added ${amount} SparkCoins to your wallet!`);
+      const msg = document.getElementById('txMessage');
+      try {
+        await LonelyFansAuth.buyCoins(amount, price);
+        await refresh();
+        if (msg) {
+          msg.className = 'message success';
+          msg.textContent = `Added ${amount} SparkCoins to your wallet.`;
+        }
+      } catch (err) {
+        if (msg) msg.textContent = err.message;
+      }
     }
 
     refresh();

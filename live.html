@@ -65,6 +65,7 @@
     </div>
     <div class="side-panel">
       <div class="goal-box" id="goalBox">No active goal</div>
+      <div id="tipFeed" style="font-size:0.8rem;color:var(--muted);margin-bottom:0.6rem;max-height:60px;overflow:hidden"></div>
       <div class="chat-messages" id="chat"></div>
       <div class="chat-input">
         <button class="emoji-btn" onclick="toggleEmoji()">😊</button>
@@ -91,13 +92,24 @@
 
     const isCreator = session && session.id === creatorId;
 
-    function renderGoal() {
+    function renderTipFeed() {
+      const tips = LonelyFansAuth.getRecentTips(creatorId);
+      const el = document.getElementById('tipFeed');
+      if (!tips.length) { el.innerHTML = ''; return; }
+      el.innerHTML = tips.map(t => `<div>+${t.amount} SparkCoins tip</div>`).join('');
+    }
+
+    function celebrateGoal() {
+      const box = document.getElementById('goalBox');
+      box.style.boxShadow = '0 0 0 3px #34d399';
+      setTimeout(() => box.style.boxShadow = '', 2000);
+    }
       const goal = LonelyFansAuth.getCreatorGoal(creatorId);
       const box = document.getElementById('goalBox');
       if (!goal) {
         box.innerHTML = isCreator
           ? `<form onsubmit="setGoal(event)"><input id="goalText" placeholder="Goal text" required><input id="goalTarget" type="number" placeholder="Target SparkCoins" required><button>Set Goal</button></form>`
-          : 'No active goal';
+          : '<div class="empty-state" style="padding:1rem">No active goal</div>';
         return;
       }
       const pct = Math.min(100, (goal.current / goal.target) * 100);
@@ -123,37 +135,56 @@
     }
 
     function tip() {
-      if (!session) { alert('Log in first'); return; }
+      if (!session) { location.href = 'login.html'; return; }
       const amount = parseInt(document.getElementById('tipAmount').value, 10);
       if (!amount || amount < 1) return;
       try {
         LonelyFansAuth.tipGoal(session.id, creatorId, amount);
         renderGoal();
-      } catch (err) { alert(err.message); }
+      } catch (err) {
+        const box = document.getElementById('goalBox');
+        box.insertAdjacentHTML('beforeend', `<div class="message">${err.message}</div>`);
+      }
     }
 
     function startChatStream() {
-      const es = new EventSource(`${LonelyFansAuth.API_BASE}/chat/${creatorId}/stream`);
+      let es;
+      try {
+        es = new EventSource(`${LonelyFansAuth.API_BASE}/chat/${creatorId}/stream`);
+      } catch {
+        setInterval(renderChatFallback, 2500);
+        return;
+      }
       es.onmessage = (e) => {
         try {
           const msgs = JSON.parse(e.data);
-          const el = document.getElementById('chat');
-          if (!msgs || msgs.length === 0) {
-            el.innerHTML = '<div class="empty">No messages yet. Say hello!</div>';
-            return;
-          }
-          el.innerHTML = msgs.map(m => {
-            const badge = m.is_sub ? '<span class="badge">SUB</span>' : '';
-            const text = replaceEmotes(m.text || '');
-            return `<div class="msg ${m.username === 'Bot' ? 'bot' : ''}">${badge}<strong>${m.username}:</strong> ${text}</div>`;
-          }).join('');
-          el.scrollTop = el.scrollHeight;
+          renderMessages(msgs);
         } catch {}
       };
       es.onerror = () => {
         es.close();
-        setTimeout(startChatStream, 3000); // reconnect
+        setTimeout(startChatStream, 2500);
       };
+    }
+
+    function renderMessages(msgs) {
+      const el = document.getElementById('chat');
+      if (!msgs || msgs.length === 0) {
+        el.innerHTML = '<div class="empty">No messages yet. Say hello!</div>';
+        return;
+      }
+      el.innerHTML = msgs.map(m => {
+        const badge = m.is_sub ? '<span class="badge">SUB</span>' : '';
+        const text = replaceEmotes(m.text || '');
+        const time = m.created_at ? new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
+        return `<div class="msg ${m.username === 'Bot' ? 'bot' : ''}">${badge}<strong>${m.username}:</strong> ${text} <span style="color:var(--muted);font-size:0.7rem;margin-left:0.4rem">${time}</span></div>`;
+      }).join('');
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function renderChatFallback() {
+      const msgs = LonelyFansAuth.getChatMessages(creatorId);
+      renderMessages(msgs);
     }
 
     let emotes = [];
@@ -193,10 +224,13 @@
       e.preventDefault();
       const code = document.getElementById('emoteCode').value;
       const emoji = document.getElementById('emoteEmoji').value;
-      await LonelyFansAuth.api('/emotes', { method: 'POST', body: JSON.stringify({ code, emoji }) });
-      alert('Emote added');
-      e.target.reset();
-      loadEmotes();
+      try {
+        await LonelyFansAuth.api('/emotes', { method: 'POST', body: JSON.stringify({ code, emoji }) });
+        e.target.reset();
+        loadEmotes();
+      } catch (err) {
+        alert(err.message); // keep for now — rare
+      }
     }
     async function toggleSlow() {
       const on = document.getElementById('slowMode').checked;
@@ -222,8 +256,10 @@
     if (isCreator) LonelyFansAuth.setLive(creatorId, true);
 
     renderGoal();
+    renderTipFeed();
     startChatStream();
     setInterval(renderGoal, 3000);
+    setInterval(renderTipFeed, 4000);
   </script>
 </body>
 </html>

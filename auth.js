@@ -146,8 +146,40 @@ function addTransaction(userId, type, amount, description) {
   return tx;
 }
 
-function getUserTransactions(userId) {
-  return getTransactions().filter(tx => tx.userId === userId);
+// Follow (localStorage for now)
+function getFollows() {
+  return JSON.parse(localStorage.getItem('lf_follows') || '{}');
+}
+function toggleFollow(fanId, creatorId) {
+  const follows = getFollows();
+  if (!follows[fanId]) follows[fanId] = [];
+  const idx = follows[fanId].indexOf(creatorId);
+  if (idx === -1) follows[fanId].push(creatorId);
+  else follows[fanId].splice(idx, 1);
+  localStorage.setItem('lf_follows', JSON.stringify(follows));
+  return idx === -1;
+}
+function isFollowing(fanId, creatorId) {
+  const follows = getFollows();
+  return (follows[fanId] || []).includes(creatorId);
+}
+
+// Daily streak
+function claimDailyStreak(userId) {
+  const key = 'lf_streak_' + userId;
+  const today = new Date().toDateString();
+  const last = localStorage.getItem(key);
+  if (last === today) return { claimed: false, streak: parseInt(localStorage.getItem(key + '_count') || '0', 10) };
+  const streak = (last ? parseInt(localStorage.getItem(key + '_count') || '0', 10) : 0) + 1;
+  localStorage.setItem(key, today);
+  localStorage.setItem(key + '_count', streak);
+  addTransaction(userId, 'streak', 10, 'Daily login streak');
+  return { claimed: true, streak };
+}
+
+// Tip feed
+function getRecentTips(creatorId) {
+  return getTransactions().filter(tx => tx.type === 'tip' && tx.description.includes(creatorId)).slice(0, 5);
 }
 
 async function buyCoins(amount, price) {
@@ -362,6 +394,14 @@ function submitAttestation(creatorId) {
 }
 
 window.LonelyFansAuth = {
+  register, login, logout, getSession, markAgeVerified,
+  getProfile, saveProfile, getBalance, buyCoins, getUserTransactions, addTransaction,
+  getCreatorTiers, saveCreatorTiers, subscribe, isSubscribed,
+  setCreatorGoal, getCreatorGoal, tipGoal,
+  addChatMessage, getChatMessages, setLive, isLive, getUsers,
+  toggleFollow, isFollowing, claimDailyStreak, getRecentTips,
+  API_BASE, api
+};
   register, login, logout, getSession, markAgeVerified, getUsers, getProfile, saveProfile,
   getBalance, addTransaction, getUserTransactions, buyCoins,
   getCreatorTiers, saveCreatorTiers, isSubscribed, subscribe, getMySubscriptions,

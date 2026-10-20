@@ -122,7 +122,8 @@ a { color: var(--accent-soft); text-decoration: none; }
 .tiers { display: grid; gap: 1rem; margin-top: 1rem; }
 .tier-card { background: #0e121c; border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
 .tier-card .price { color: var(--accent-soft); font-weight: 600; margin: 0.4rem 0; }
-.empty-state { text-align: center; color: var(--muted); padding: 2rem; }
+.empty-state { text-align: center; color: var(--muted); padding: 2.5rem 1rem; }
+.empty-state a { display: inline-block; margin-top: 0.8rem; }
 * { box-sizing: border-box; }
 body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -188,16 +189,22 @@ button.secondary:hover, .btn.secondary:hover { background: #1e2433; }
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 1.5rem;
+  padding: 0.85rem 1.25rem;
   background: #0e121c;
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
   z-index: 50;
 }
-.logo-row { display: flex; align-items: center; gap: 0.6rem; }
-.logo-img { height: 36px; width: auto; }
-.logo { font-weight: 700; font-size: 1.35rem; color: var(--accent); letter-spacing: -0.02em; }
+.logo-row { display: flex; align-items: center; gap: 0.5rem; }
+.logo-img { height: 32px; width: auto; border-radius: 6px; }
+.logo { font-weight: 700; font-size: 1.2rem; color: var(--accent); letter-spacing: -0.02em; }
+@media (max-width: 600px) {
+  .dash-header { padding: 0.7rem 1rem; }
+  .logo { font-size: 1.05rem; }
+  .container { margin: 1rem auto; padding: 1.25rem; }
+  .live-layout { padding: 0 0.75rem; }
+}
 a { color: var(--accent-soft); text-decoration: none; }
 a:hover { text-decoration: underline; }
 .editor-layout {

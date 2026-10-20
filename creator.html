@@ -60,7 +60,10 @@
             <div class="info-card">
               <h1>${profile.displayName || 'Creator'}</h1>
               <p>${profile.bio || 'No bio yet.'}</p>
-              <p><a href="live.html?id=${creatorId}" class="btn">Watch Live</a></p>
+              <div style="display:flex;gap:0.5rem;margin:0.8rem 0">
+                <a href="live.html?id=${creatorId}" class="btn" style="width:auto">Watch Live</a>
+                ${session && session.id !== creatorId ? `<button class="secondary" style="width:auto" onclick="doFollow()">${LonelyFansAuth.isFollowing(session.id, creatorId) ? 'Following' : 'Follow'}</button>` : ''}
+              </div>
               <h2>Subscription Tiers</h2>
               <div class="tiers">${tiersHtml}</div>
             </div>
@@ -71,17 +74,24 @@
         }
       })();
       }
+
+    function doFollow() {
+      if (!session) { location.href = 'login.html'; return; }
+      LonelyFansAuth.toggleFollow(session.id, creatorId);
+      location.reload();
+    }
+
+    function doSubscribe(tierId, price) {
       if (!session) {
-        alert('Please log in to subscribe');
         location.href = 'login.html';
         return;
       }
       try {
         LonelyFansAuth.subscribe(session.id, creatorId, tierId, price);
-        alert('Subscribed!');
         location.reload();
       } catch (err) {
-        alert(err.message);
+        const page = document.getElementById('creatorPage');
+        page.insertAdjacentHTML('beforeend', `<div class="message">${err.message}</div>`);
       }
     }
   </script>
