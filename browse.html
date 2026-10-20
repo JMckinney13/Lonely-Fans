@@ -53,6 +53,8 @@
   <script>
     const session = LonelyFansAuth.requireSession();
     const esc = LonelyFansAuth.escapeHtml;
+    // Tolerate a briefly stale cached auth.js right after a deploy
+    const goLive = LonelyFansAuth.formatGoLive || (() => '');
     const grid = document.getElementById('grid');
     let creators = [];
     let followIds = new Set();
@@ -92,7 +94,7 @@
               <h3>${esc(c.displayName)} ${c.isLive ? '<span class="live-dot">● LIVE</span>' : ''}</h3>
               ${followIds.has(c.id) ? '<div class="following-tag">✓ Following</div>' : ''}
               <p class="note">${esc(c.bio.slice(0, 70) || 'No bio')}${c.bio.length > 70 ? '…' : ''}</p>
-              ${!c.isLive && LonelyFansAuth.formatGoLive(c.nextLiveAt) ? `<div class="go-live">📅 Live ${esc(LonelyFansAuth.formatGoLive(c.nextLiveAt))}</div>` : ''}
+              ${!c.isLive && goLive(c.nextLiveAt) ? `<div class="go-live">📅 Live ${esc(goLive(c.nextLiveAt))}</div>` : ''}
               <div class="card-actions">
                 <a href="creator.html?id=${encodeURIComponent(c.id)}" class="btn small">View Page</a>
                 ${c.isLive ? `<a href="live.html?id=${encodeURIComponent(c.id)}" class="btn small secondary">Watch</a>` : ''}

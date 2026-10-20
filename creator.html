@@ -25,6 +25,8 @@
     const creatorId = params.get('id');
     const session = LonelyFansAuth.getSession();
     const esc = LonelyFansAuth.escapeHtml;
+    // Tolerate a briefly stale cached auth.js right after a deploy
+    const goLive = LonelyFansAuth.formatGoLive || (() => '');
     const page = document.getElementById('creatorPage');
 
     if (session) {
@@ -74,7 +76,7 @@
           <div class="info-card">
             <h1>${esc(profile.displayName || 'Creator')} ${live ? '<span class="live-dot">● LIVE</span>' : ''}</h1>
             <p>${esc(profile.bio || 'No bio yet.')}</p>
-            ${!live && LonelyFansAuth.formatGoLive(profile.nextLiveAt) ? `<p class="go-live" id="goLive">📅 Going live ${esc(LonelyFansAuth.formatGoLive(profile.nextLiveAt))}</p>` : ''}
+            ${!live && goLive(profile.nextLiveAt) ? `<p class="go-live" id="goLive">📅 Going live ${esc(goLive(profile.nextLiveAt))}</p>` : ''}
             <div class="card-actions">
               <a href="live.html?id=${encodeURIComponent(creatorId)}" class="btn small">${isOwner ? 'Go Live' : live ? 'Watch Live' : 'Stream &amp; Chat'}</a>
               ${isOwner ? '<a href="customize.html" class="btn small secondary">Edit Page</a>' : ''}
