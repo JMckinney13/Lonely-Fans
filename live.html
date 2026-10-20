@@ -146,7 +146,7 @@
     </div>
   </div>
 
-  <script src="auth.js?v=3ad7d4a1"></script>
+  <script src="auth.js?v=188585ce"></script>
   <script>
     const params = new URLSearchParams(location.search);
     const creatorId = params.get('id');
@@ -466,6 +466,7 @@
       });
       loadModList();
       LonelyFansAuth.setLive(creatorId, true).catch(() => {});
+      setInterval(() => LonelyFansAuth.sendLiveHeartbeat().catch(() => {}), 30000);
       // Go offline when the creator leaves the page
       window.addEventListener('pagehide', () => {
         LonelyFansAuth.setLive(creatorId, false, { keepalive: true }).catch(() => {});

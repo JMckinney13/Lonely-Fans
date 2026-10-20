@@ -352,6 +352,15 @@ async function setLive(creatorId, isLive, { keepalive = false } = {}) {
   await api('/live', { method: 'POST', body: JSON.stringify({ isLive }), keepalive });
 }
 
+// While live, the creator page calls this every ~30s; the server marks
+// creators offline after ~90s without a heartbeat.
+async function sendLiveHeartbeat() {
+  return api('/live/heartbeat', { method: 'POST' });
+}
+async function getLiveInfo(creatorId) {
+  return api(`/live/${encodeURIComponent(creatorId)}`);
+}
+
 async function isLive(creatorId) {
   try {
     const data = await api(`/live/${creatorId}`);
@@ -422,7 +431,7 @@ window.LonelyFansAuth = {
   getProfile, saveProfile, getBalance, buyCoins, getUserTransactions, addTransaction,
   getCreatorTiers, saveCreatorTiers, subscribe, isSubscribed,
   setCreatorGoal, getCreatorGoal, tipGoal,
-  addChatMessage, getChatMessages, setLive, isLive, getUsers,
+  addChatMessage, getChatMessages, setLive, isLive, sendLiveHeartbeat, getLiveInfo, getUsers,
   toggleFollow, isFollowing, getMyFollows, claimDailyStreak, getCreators,
   escapeHtml, parseServerDate, formatGoLive, requireSession,
   getEarnings, getCreatorEarnings, requestPayout, getCreatorPayouts,

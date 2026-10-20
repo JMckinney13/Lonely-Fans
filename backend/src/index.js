@@ -103,6 +103,12 @@ const SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS idx_tips_creator ON tips(creator_id, fan_id);
   ALTER TABLE profiles ADD COLUMN IF NOT EXISTS next_live_at TEXT;
+  ALTER TABLE live_status ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ;
+  ALTER TABLE live_status ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+  CREATE TABLE IF NOT EXISTS live_viewers (
+    creator_id TEXT NOT NULL, viewer_key TEXT NOT NULL, last_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (creator_id, viewer_key)
+  );
   CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_chat_creator ON chat_messages(creator_id, created_at);
 `;
@@ -189,10 +195,26 @@ app.post('/api/age-verify', authMiddleware, h(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Live heartbeat: the creator's live page pings every ~30s; anyone silent for
+// longer than LIVE_STALE_SECONDS is treated as offline.
+const LIVE_STALE_SECONDS = parseInt(process.env.LIVE_STALE_SECONDS, 10) || 90;
+const VIEWER_STALE_SECONDS = 60;
+const LIVE_EXPR = `(CASE WHEN l.is_live = 1 AND l.last_seen >= now() - interval '${LIVE_STALE_SECONDS} seconds' THEN 1 ELSE 0 END)`;
+let lastSweep = 0;
+async function sweepStaleLive(force = false) {
+  // Cheap enough to run on reads, but no more than every few seconds
+  if (!force && Date.now() - lastSweep < 5000) return;
+  lastSweep = Date.now();
+  await q(`UPDATE live_status SET is_live = 0
+           WHERE is_live = 1 AND (last_seen IS NULL OR last_seen < now() - make_interval(secs => $1))`, [LIVE_STALE_SECONDS]);
+  await q(`DELETE FROM live_viewers WHERE last_seen < now() - make_interval(secs => $1)`, [VIEWER_STALE_SECONDS]);
+}
+
 // Public creator directory (browse + "Live Now")
 app.get('/api/creators', h(async (req, res) => {
+  await sweepStaleLive();
   const rows = await q(`
-    SELECT u.id, u.email, p.display_name, p.bio, p.theme_color, p.next_live_at, COALESCE(l.is_live, 0) AS is_live
+    SELECT u.id, u.email, p.display_name, p.bio, p.theme_color, p.next_live_at, ${LIVE_EXPR} AS is_live
     FROM users u
     LEFT JOIN profiles p ON p.user_id = u.id
     LEFT JOIN live_status l ON l.creator_id = u.id
@@ -212,8 +234,9 @@ app.get('/api/creators', h(async (req, res) => {
 
 // Follows
 app.get('/api/follows', authMiddleware, h(async (req, res) => {
+  await sweepStaleLive();
   const rows = await q(`
-    SELECT u.id, u.email, p.display_name, p.bio, p.theme_color, COALESCE(l.is_live, 0) AS is_live, f.created_at
+    SELECT u.id, u.email, p.display_name, p.bio, p.theme_color, ${LIVE_EXPR} AS is_live, f.created_at
     FROM follows f JOIN users u ON u.id = f.creator_id
     LEFT JOIN profiles p ON p.user_id = u.id
     LEFT JOIN live_status l ON l.creator_id = u.id
@@ -742,16 +765,61 @@ app.post('/api/payouts', authMiddleware, requireCreator, h(async (req, res) => {
 }));
 
 // Live status
+async function setLiveStatus(creatorId, isLive) {
+  if (isLive) {
+    // started_at only resets when going from offline to live
+    await q(`INSERT INTO live_status (creator_id, is_live, last_seen, started_at) VALUES ($1, 1, now(), now())
+             ON CONFLICT (creator_id) DO UPDATE SET
+               started_at = CASE WHEN live_status.is_live = 1 THEN COALESCE(live_status.started_at, now()) ELSE now() END,
+               is_live = 1, last_seen = now()`, [creatorId]);
+  } else {
+    await q(`INSERT INTO live_status (creator_id, is_live) VALUES ($1, 0)
+             ON CONFLICT (creator_id) DO UPDATE SET is_live = 0, started_at = NULL`, [creatorId]);
+    await q('DELETE FROM live_viewers WHERE creator_id = $1', [creatorId]);
+  }
+}
+
 app.post('/api/live', authMiddleware, requireCreator, h(async (req, res) => {
   const { isLive } = req.body;
-  await q(`INSERT INTO live_status (creator_id, is_live) VALUES ($1, $2)
-           ON CONFLICT (creator_id) DO UPDATE SET is_live = EXCLUDED.is_live`, [req.user.id, isLive ? 1 : 0]);
+  await sweepStaleLive(true);
+  await setLiveStatus(req.user.id, !!isLive);
   res.json({ ok: true });
 }));
 
+// Keeps the creator live; send every ~30s while the camera is on
+app.post('/api/live/heartbeat', authMiddleware, requireCreator, h(async (req, res) => {
+  await sweepStaleLive(true);
+  await setLiveStatus(req.user.id, true);
+  res.json({ ok: true, staleAfterSeconds: LIVE_STALE_SECONDS });
+}));
+
+const liveInfo = async (creatorId) => {
+  await sweepStaleLive();
+  const row = await one(`SELECT is_live, started_at FROM live_status WHERE creator_id = $1
+                         AND is_live = 1 AND last_seen >= now() - make_interval(secs => $2)`, [creatorId, LIVE_STALE_SECONDS]);
+  if (!row) return { isLive: false, viewers: 0, startedAt: null };
+  const v = await one(`SELECT COUNT(*)::int AS n FROM live_viewers WHERE creator_id = $1
+                       AND last_seen >= now() - make_interval(secs => $2)`, [creatorId, VIEWER_STALE_SECONDS]);
+  return { isLive: true, viewers: v.n, startedAt: row.started_at ? new Date(row.started_at).toISOString() : null };
+};
+
 app.get('/api/live/:creatorId', h(async (req, res) => {
-  const row = await one('SELECT is_live FROM live_status WHERE creator_id = $1', [req.params.creatorId]);
-  res.json({ isLive: !!(row && row.is_live) });
+  res.json(await liveInfo(req.params.creatorId));
+}));
+
+// Viewer presence for the viewer count. Public like the chat (logged-out
+// visitors can watch); keyed by a random per-browser id.
+const VIEWER_KEY_RE = /^[A-Za-z0-9-]{8,64}$/;
+app.post('/api/live/:creatorId/view', h(async (req, res) => {
+  const key = req.body && req.body.viewerKey;
+  if (typeof key !== 'string' || !VIEWER_KEY_RE.test(key)) return res.status(400).json({ error: 'Invalid viewer key' });
+  const info = await liveInfo(req.params.creatorId);
+  if (info.isLive) {
+    await q(`INSERT INTO live_viewers (creator_id, viewer_key, last_seen) VALUES ($1, $2, now())
+             ON CONFLICT (creator_id, viewer_key) DO UPDATE SET last_seen = now()`, [req.params.creatorId, key]);
+    info.viewers = (await liveInfo(req.params.creatorId)).viewers;
+  }
+  res.json(info);
 }));
 
 // JSON error responses instead of Express's HTML error page
@@ -765,6 +833,7 @@ async function start() {
   for (let attempt = 1; ; attempt++) {
     try {
       await pool.query(SCHEMA);
+      await sweepStaleLive(true);
       break;
     } catch (e) {
       if (attempt >= 10) throw e;
