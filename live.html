@@ -46,7 +46,7 @@
         Simulated stream – creator is on camera
       </div>
       <div style="margin-top:1rem" id="creatorControls">
-        ${isCreator ? `
+        ${isCreator ? ` ` : ''}
           <h3>Chat Commands</h3>
           <form onsubmit="addCommand(event)" style="display:flex;gap:0.4rem">
             <input id="cmdTrigger" placeholder="!hello" style="flex:1">
@@ -60,7 +60,6 @@
             <button style="width:auto">Add</button>
           </form>
           <label style="margin-top:0.8rem"><input type="checkbox" id="slowMode" onchange="toggleSlow()"> Slow mode</label>
-        ` : ''}
       </div>
     </div>
     <div class="side-panel">
