@@ -104,7 +104,8 @@
       box.style.boxShadow = '0 0 0 3px #34d399';
       setTimeout(() => box.style.boxShadow = '', 2000);
     }
-      const goal = LonelyFansAuth.getCreatorGoal(creatorId);
+    async function renderGoal() {
+      const goal = await LonelyFansAuth.getCreatorGoal(creatorId);
       const box = document.getElementById('goalBox');
       if (!goal) {
         box.innerHTML = isCreator
@@ -238,15 +239,6 @@
     }
 
     loadEmotes();
-      if (!session) { alert('Log in to chat'); return; }
-      const input = document.getElementById('chatInput');
-      const text = input.value.trim();
-      if (!text) return;
-      const name = session.email.split('@')[0];
-      LonelyFansAuth.addChatMessage(creatorId, name, text);
-      input.value = '';
-      renderChat();
-    }
 
     document.getElementById('chatInput').addEventListener('keypress', e => {
       if (e.key === 'Enter') sendChat();

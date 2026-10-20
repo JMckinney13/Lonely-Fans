@@ -63,10 +63,6 @@
       window.location.href = 'dashboard.html';
     }
 
-    const session = LonelyFansAuth.getSession();
-    if (!session || session.role !== 'creator') {
-      window.location.href = 'dashboard.html';
-    }
 
     (async () => {
       const profile = await LonelyFansAuth.getProfile(session.id) || {};

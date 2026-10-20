@@ -400,13 +400,7 @@ window.LonelyFansAuth = {
   setCreatorGoal, getCreatorGoal, tipGoal,
   addChatMessage, getChatMessages, setLive, isLive, getUsers,
   toggleFollow, isFollowing, claimDailyStreak, getRecentTips,
-  API_BASE, api
-};
-  register, login, logout, getSession, markAgeVerified, getUsers, getProfile, saveProfile,
-  getBalance, addTransaction, getUserTransactions, buyCoins,
-  getCreatorTiers, saveCreatorTiers, isSubscribed, subscribe, getMySubscriptions,
-  getCreatorGoal, setCreatorGoal, tipGoal, addChatMessage, getChatMessages,
-  setLive, isLive,
   getCreatorEarnings, requestPayout, getCreatorPayouts,
-  submitReport, hasAttested, submitAttestation
+  submitReport, hasAttested, submitAttestation,
+  API_BASE, api
 };
