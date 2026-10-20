@@ -109,6 +109,11 @@ db.exec(`
     expires_at TEXT,
     PRIMARY KEY (creator_id, user_id)
   );
+  CREATE TABLE IF NOT EXISTS streaks (
+    user_id TEXT PRIMARY KEY,
+    last_day TEXT,
+    count INTEGER DEFAULT 0
+  );
   CREATE TABLE IF NOT EXISTS live_status (
     creator_id TEXT PRIMARY KEY,
     is_live INTEGER DEFAULT 0,
@@ -127,12 +132,21 @@ function authMiddleware(req, res, next) {
     res.status(401).json({ error: 'Invalid token' });
   }
 }
+function requireCreator(req, res, next) {
+  if (req.user.role !== 'creator') return res.status(403).json({ error: 'Creators only' });
+  next();
+}
+const isPosInt = (n) => Number.isInteger(n) && n > 0;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
 app.post('/api/register', (req, res) => {
   const { email, password, role } = req.body;
   if (!email || !password || !role) return res.status(400).json({ error: 'Missing fields' });
+  if (!EMAIL_RE.test(String(email))) return res.status(400).json({ error: 'Invalid email address' });
+  if (String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  if (!['creator', 'viewer'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
   const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
   if (existing) return res.status(400).json({ error: 'Email already registered' });
 
@@ -151,6 +165,7 @@ app.post('/api/register', (req, res) => {
 
 app.post('/api/login', (req, res) => {
   const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     return res.status(401).json({ error: 'Invalid email or password' });
@@ -164,6 +179,46 @@ app.get('/api/me', authMiddleware, (req, res) => {
   res.json({ ...user, ageVerified: !!user.age_verified });
 });
 
+app.post('/api/age-verify', authMiddleware, (req, res) => {
+  db.prepare('UPDATE users SET age_verified = 1 WHERE id = ?').run(req.user.id);
+  res.json({ ok: true });
+});
+
+// Public creator directory (browse + "Live Now")
+app.get('/api/creators', (req, res) => {
+  const rows = db.prepare(`
+    SELECT u.id, u.email, p.display_name, p.bio, p.theme_color, COALESCE(l.is_live, 0) AS is_live
+    FROM users u
+    LEFT JOIN profiles p ON p.user_id = u.id
+    LEFT JOIN live_status l ON l.creator_id = u.id
+    WHERE u.role = 'creator'
+    ORDER BY is_live DESC, u.created_at DESC
+    LIMIT 100
+  `).all();
+  res.json(rows.map(r => ({
+    id: r.id,
+    displayName: r.display_name || r.email.split('@')[0],
+    bio: r.bio || '',
+    themeColor: r.theme_color || '#ff6b6b',
+    isLive: !!r.is_live
+  })));
+});
+
+// Daily login streak (server-side so the reward actually lands in the wallet)
+app.post('/api/streak/claim', authMiddleware, (req, res) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const row = db.prepare('SELECT * FROM streaks WHERE user_id = ?').get(req.user.id);
+  if (row && row.last_day === today) return res.json({ claimed: false, streak: row.count });
+  const count = row && row.last_day === yesterday ? row.count + 1 : 1;
+  db.prepare('INSERT OR REPLACE INTO streaks (user_id, last_day, count) VALUES (?, ?, ?)').run(req.user.id, today, count);
+  db.prepare('UPDATE wallets SET balance = balance + 10 WHERE user_id = ?').run(req.user.id);
+  db.prepare('INSERT INTO transactions (id, user_id, type, amount, description) VALUES (?, ?, ?, ?, ?)').run(
+    uuid(), req.user.id, 'streak', 10, `Daily login streak (day ${count})`
+  );
+  res.json({ claimed: true, streak: count });
+});
+
 app.get('/api/wallet', authMiddleware, (req, res) => {
   const wallet = db.prepare('SELECT balance FROM wallets WHERE user_id = ?').get(req.user.id);
   res.json({ balance: wallet?.balance || 0 });
@@ -171,7 +226,7 @@ app.get('/api/wallet', authMiddleware, (req, res) => {
 
 app.post('/api/wallet/buy', authMiddleware, (req, res) => {
   const { amount } = req.body;
-  if (!amount || amount < 1) return res.status(400).json({ error: 'Invalid amount' });
+  if (!isPosInt(amount) || amount > 100000) return res.status(400).json({ error: 'Invalid amount' });
   db.prepare('UPDATE wallets SET balance = balance + ? WHERE user_id = ?').run(amount, req.user.id);
   db.prepare('INSERT INTO transactions (id, user_id, type, amount, description) VALUES (?, ?, ?, ?, ?)').run(
     uuid(), req.user.id, 'purchase', amount, `Purchased ${amount} SparkCoins`
@@ -237,9 +292,10 @@ app.get('/api/tiers/:creatorId', (req, res) => {
   res.json(tiers.map(t => ({ ...t, perks: t.perks ? JSON.parse(t.perks) : [] })));
 });
 
-app.post('/api/tiers', authMiddleware, (req, res) => {
+app.post('/api/tiers', authMiddleware, requireCreator, (req, res) => {
   const { name, price, perks } = req.body;
-  if (!name || !price) return res.status(400).json({ error: 'Missing fields' });
+  if (!name || !String(name).trim() || !price) return res.status(400).json({ error: 'Missing fields' });
+  if (!isPosInt(price)) return res.status(400).json({ error: 'Price must be a whole number above 0' });
   const count = db.prepare('SELECT COUNT(*) as c FROM tiers WHERE creator_id = ?').get(req.user.id).c;
   if (count >= 3) return res.status(400).json({ error: 'Maximum 3 tiers' });
   const id = uuid();
@@ -258,6 +314,7 @@ app.post('/api/subscribe', authMiddleware, (req, res) => {
   const { creatorId, tierId } = req.body;
   const tier = db.prepare('SELECT * FROM tiers WHERE id = ? AND creator_id = ?').get(tierId, creatorId);
   if (!tier) return res.status(404).json({ error: 'Tier not found' });
+  if (creatorId === req.user.id) return res.status(400).json({ error: "You can't subscribe to yourself" });
 
   const wallet = db.prepare('SELECT balance FROM wallets WHERE user_id = ?').get(req.user.id);
   if (!wallet || wallet.balance < tier.price) return res.status(400).json({ error: 'Not enough SparkCoins' });
@@ -290,19 +347,38 @@ app.get('/api/goals/:creatorId', (req, res) => {
   res.json(goal || null);
 });
 
-app.post('/api/goals', authMiddleware, (req, res) => {
+app.post('/api/goals', authMiddleware, requireCreator, (req, res) => {
   const { text, target } = req.body;
+  if (!text || !String(text).trim()) return res.status(400).json({ error: 'Goal text is required' });
+  if (!isPosInt(target)) return res.status(400).json({ error: 'Target must be a whole number above 0' });
   db.prepare('INSERT OR REPLACE INTO goals (creator_id, text, target, current, completed) VALUES (?, ?, ?, 0, 0)').run(req.user.id, text, target);
   res.json({ ok: true });
 });
 
 app.post('/api/goals/tip', authMiddleware, (req, res) => {
   const { creatorId, amount } = req.body;
+  if (!isPosInt(amount)) return res.status(400).json({ error: 'Tip must be a whole number above 0' });
+  if (creatorId === req.user.id) return res.status(400).json({ error: "You can't tip yourself" });
+  const existingGoal = db.prepare('SELECT * FROM goals WHERE creator_id = ?').get(creatorId);
+  if (!existingGoal) return res.status(404).json({ error: 'No active goal' });
+  if (existingGoal.completed) return res.status(400).json({ error: 'Goal already completed' });
   const wallet = db.prepare('SELECT balance FROM wallets WHERE user_id = ?').get(req.user.id);
   if (!wallet || wallet.balance < amount) return res.status(400).json({ error: 'Not enough SparkCoins' });
-  db.prepare('UPDATE wallets SET balance = balance - ? WHERE user_id = ?').run(amount, req.user.id);
-  db.prepare('UPDATE wallets SET balance = balance + ? WHERE user_id = ?').run(amount, creatorId);
-  db.prepare('UPDATE goals SET current = current + ? WHERE creator_id = ?').run(amount, creatorId);
+  const tipper = db.prepare('SELECT email FROM users WHERE id = ?').get(req.user.id);
+  db.transaction(() => {
+    db.prepare('UPDATE wallets SET balance = balance - ? WHERE user_id = ?').run(amount, req.user.id);
+    db.prepare('UPDATE wallets SET balance = balance + ? WHERE user_id = ?').run(amount, creatorId);
+    db.prepare('UPDATE goals SET current = current + ? WHERE creator_id = ?').run(amount, creatorId);
+    db.prepare('INSERT INTO transactions (id, user_id, type, amount, description) VALUES (?, ?, ?, ?, ?)').run(
+      uuid(), req.user.id, 'tip', -amount, 'Tipped a creator goal'
+    );
+    db.prepare('INSERT INTO transactions (id, user_id, type, amount, description) VALUES (?, ?, ?, ?, ?)').run(
+      uuid(), creatorId, 'earning', amount, 'Goal tip received'
+    );
+    db.prepare('INSERT INTO chat_messages (id, creator_id, username, text) VALUES (?, ?, ?, ?)').run(
+      uuid(), creatorId, 'Bot', `${tipper ? tipper.email.split('@')[0] : 'Someone'} tipped ${amount} SparkCoins!`
+    );
+  })();
   const goal = db.prepare('SELECT * FROM goals WHERE creator_id = ?').get(creatorId);
   if (goal && goal.current >= goal.target) {
     db.prepare('UPDATE goals SET completed = 1 WHERE creator_id = ?').run(creatorId);
@@ -338,7 +414,7 @@ app.get('/api/emotes/:creatorId', (req, res) => {
   res.json(emotes);
 });
 
-app.post('/api/emotes', authMiddleware, (req, res) => {
+app.post('/api/emotes', authMiddleware, requireCreator, (req, res) => {
   const { code, emoji } = req.body;
   if (!code || !emoji) return res.status(400).json({ error: 'Missing fields' });
   db.prepare('INSERT OR REPLACE INTO chat_emotes (id, creator_id, code, emoji) VALUES (?, ?, ?, ?)').run(uuid(), req.user.id, code.toLowerCase(), emoji);
@@ -351,7 +427,7 @@ app.get('/api/settings/:creatorId', (req, res) => {
   res.json(s || { slow_mode: 0 });
 });
 
-app.post('/api/settings', authMiddleware, (req, res) => {
+app.post('/api/settings', authMiddleware, requireCreator, (req, res) => {
   const { slow_mode } = req.body;
   db.prepare('INSERT OR REPLACE INTO stream_settings (creator_id, slow_mode) VALUES (?, ?)').run(req.user.id, slow_mode ? 1 : 0);
   res.json({ ok: true });
@@ -369,7 +445,7 @@ app.get('/api/commands/:creatorId', (req, res) => {
   res.json(cmds);
 });
 
-app.post('/api/commands', authMiddleware, (req, res) => {
+app.post('/api/commands', authMiddleware, requireCreator, (req, res) => {
   const { trigger, response } = req.body;
   if (!trigger || !response) return res.status(400).json({ error: 'Missing fields' });
   const id = uuid();
@@ -378,14 +454,14 @@ app.post('/api/commands', authMiddleware, (req, res) => {
 });
 
 // Moderation
-app.post('/api/mod/timeout', authMiddleware, (req, res) => {
+app.post('/api/mod/timeout', authMiddleware, requireCreator, (req, res) => {
   const { userId, minutes } = req.body;
   const expires = new Date(Date.now() + (minutes || 5) * 60000).toISOString();
   db.prepare('INSERT OR REPLACE INTO chat_moderation (creator_id, user_id, type, expires_at) VALUES (?, ?, ?, ?)').run(req.user.id, userId, 'timeout', expires);
   res.json({ ok: true });
 });
 
-app.post('/api/mod/ban', authMiddleware, (req, res) => {
+app.post('/api/mod/ban', authMiddleware, requireCreator, (req, res) => {
   const { userId } = req.body;
   db.prepare('INSERT OR REPLACE INTO chat_moderation (creator_id, user_id, type, expires_at) VALUES (?, ?, ?, ?)').run(req.user.id, userId, 'ban', null);
   res.json({ ok: true });
@@ -393,7 +469,11 @@ app.post('/api/mod/ban', authMiddleware, (req, res) => {
 
 // Enhanced chat post with command & mod check
 app.post('/api/chat', authMiddleware, (req, res) => {
-  const { creatorId, text } = req.body;
+  const { creatorId } = req.body;
+  const text = typeof req.body.text === 'string' ? req.body.text.trim() : '';
+  if (!creatorId) return res.status(400).json({ error: 'Missing creator' });
+  if (!text) return res.status(400).json({ error: 'Message is empty' });
+  if (text.length > 500) return res.status(400).json({ error: 'Message is too long (500 max)' });
   const user = db.prepare('SELECT email FROM users WHERE id = ?').get(req.user.id);
   const username = user.email.split('@')[0];
 
@@ -421,7 +501,8 @@ app.post('/api/chat', authMiddleware, (req, res) => {
   if (settings && settings.slow_mode) {
     const last = db.prepare('SELECT created_at FROM chat_messages WHERE creator_id = ? AND username = ? ORDER BY created_at DESC LIMIT 1').get(creatorId, username);
     if (last) {
-      const diff = (Date.now() - new Date(last.created_at).getTime()) / 1000;
+      // SQLite CURRENT_TIMESTAMP is UTC without a zone marker
+      const diff = (Date.now() - new Date(last.created_at.replace(' ', 'T') + 'Z').getTime()) / 1000;
       if (diff < 5) return res.status(429).json({ error: 'Slow mode: wait a few seconds' });
     }
   }
@@ -434,7 +515,7 @@ app.post('/api/chat', authMiddleware, (req, res) => {
 });
 
 // Live status
-app.post('/api/live', authMiddleware, (req, res) => {
+app.post('/api/live', authMiddleware, requireCreator, (req, res) => {
   const { isLive } = req.body;
   db.prepare('INSERT OR REPLACE INTO live_status (creator_id, is_live) VALUES (?, ?)').run(req.user.id, isLive ? 1 : 0);
   res.json({ ok: true });
@@ -443,6 +524,12 @@ app.post('/api/live', authMiddleware, (req, res) => {
 app.get('/api/live/:creatorId', (req, res) => {
   const row = db.prepare('SELECT is_live FROM live_status WHERE creator_id = ?').get(req.params.creatorId);
   res.json({ isLive: !!(row && row.is_live) });
+});
+
+// JSON error responses instead of Express's HTML error page
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(err.status || 500).json({ error: err.status === 400 ? 'Invalid request body' : 'Server error' });
 });
 
 app.listen(PORT, () => console.log(`Lonely Fans API running on http://localhost:${PORT}`));
