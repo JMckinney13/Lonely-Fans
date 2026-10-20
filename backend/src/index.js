@@ -86,6 +86,11 @@ const SCHEMA = `
     fan_id TEXT NOT NULL REFERENCES users(id), creator_id TEXT NOT NULL REFERENCES users(id),
     created_at TEXT DEFAULT ${NOW}, PRIMARY KEY (fan_id, creator_id)
   );
+  CREATE TABLE IF NOT EXISTS payouts (
+    id TEXT PRIMARY KEY, creator_id TEXT NOT NULL REFERENCES users(id), amount INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'completed', requested_at TEXT DEFAULT ${NOW}, completed_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_payouts_creator ON payouts(creator_id, requested_at);
   CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_chat_creator ON chat_messages(creator_id, created_at);
 `;
@@ -548,6 +553,68 @@ app.post('/api/chat', authMiddleware, h(async (req, res) => {
 
   await q('INSERT INTO chat_messages (id, creator_id, username, text, is_sub, user_id) VALUES ($1, $2, $3, $4, $5, $6)', [uuid(), creatorId, username, text, isSub ? 1 : 0, req.user.id]);
   res.json({ ok: true });
+}));
+
+// Earnings & payouts (creator only). Earnings are 'earning' transactions,
+// classified by source; payouts are recorded in the payouts table.
+const EARNING_KIND = `CASE WHEN description ILIKE '%tip%' THEN 'tip'
+  WHEN description ILIKE '%subscri%' THEN 'subscription' ELSE 'other' END`;
+async function earningsSummary(creatorId, c = pool) {
+  const t = await one(`SELECT
+      COALESCE(SUM(amount) FILTER (WHERE ${EARNING_KIND} = 'subscription'), 0)::int AS subscriptions,
+      COALESCE(SUM(amount) FILTER (WHERE ${EARNING_KIND} = 'tip'), 0)::int AS tips,
+      COALESCE(SUM(amount) FILTER (WHERE ${EARNING_KIND} = 'other'), 0)::int AS other,
+      COUNT(*) FILTER (WHERE ${EARNING_KIND} = 'subscription')::int AS subscription_count,
+      COUNT(*) FILTER (WHERE ${EARNING_KIND} = 'tip')::int AS tip_count
+    FROM transactions WHERE user_id = $1 AND type = 'earning'`, [creatorId], c);
+  const p = await one(`SELECT COALESCE(SUM(amount), 0)::int AS paid FROM payouts WHERE creator_id = $1 AND status IN ('pending', 'completed')`, [creatorId], c);
+  const w = await one('SELECT balance FROM wallets WHERE user_id = $1', [creatorId], c);
+  const earned = t.subscriptions + t.tips + t.other;
+  // Can't pay out more than was earned, nor more than is still in the wallet
+  const available = Math.max(0, Math.min(earned - p.paid, w ? w.balance : 0));
+  return {
+    subscriptions: t.subscriptions, tips: t.tips, other: t.other,
+    subscriptionCount: t.subscription_count, tipCount: t.tip_count,
+    earned, paidOut: p.paid, available
+  };
+}
+const payoutOut = (p) => ({ id: p.id, amount: p.amount, status: p.status, requestedAt: p.requested_at, completedAt: p.completed_at });
+
+app.get('/api/earnings', authMiddleware, requireCreator, h(async (req, res) => {
+  const [totals, recent, payouts] = await Promise.all([
+    earningsSummary(req.user.id),
+    q(`SELECT id, amount, description, created_at, ${EARNING_KIND} AS kind FROM transactions
+       WHERE user_id = $1 AND type = 'earning' ORDER BY created_at DESC LIMIT 50`, [req.user.id]),
+    q('SELECT * FROM payouts WHERE creator_id = $1 ORDER BY requested_at DESC LIMIT 50', [req.user.id])
+  ]);
+  res.json({
+    totals,
+    earnings: recent.map(r => ({ id: r.id, kind: r.kind, amount: r.amount, description: r.description, timestamp: r.created_at })),
+    payouts: payouts.map(payoutOut)
+  });
+}));
+
+app.get('/api/payouts', authMiddleware, requireCreator, h(async (req, res) => {
+  const rows = await q('SELECT * FROM payouts WHERE creator_id = $1 ORDER BY requested_at DESC LIMIT 50', [req.user.id]);
+  res.json(rows.map(payoutOut));
+}));
+
+const MIN_PAYOUT = 50;
+app.post('/api/payouts', authMiddleware, requireCreator, h(async (req, res) => {
+  const { amount } = req.body;
+  if (!isPosInt(amount) || amount < MIN_PAYOUT) return res.status(400).json({ error: `Minimum payout is ${MIN_PAYOUT} SparkCoins` });
+  const payout = await tx(async (c) => {
+    await c.query('SELECT balance FROM wallets WHERE user_id = $1 FOR UPDATE', [req.user.id]);
+    const { available } = await earningsSummary(req.user.id, c);
+    if (amount > available) throw new HttpError(400, `Not enough available earnings (available: ${available} SparkCoins)`);
+    const id = uuid();
+    // Prototype: payouts complete instantly; a real processor would leave this 'pending'
+    await c.query(`INSERT INTO payouts (id, creator_id, amount, status, completed_at) VALUES ($1, $2, $3, 'completed', ${NOW})`, [id, req.user.id, amount]);
+    await c.query('UPDATE wallets SET balance = balance - $1 WHERE user_id = $2', [amount, req.user.id]);
+    await c.query(INSERT_TX, [uuid(), req.user.id, 'payout', -amount, `Payout of ${amount} SparkCoins`]);
+    return one('SELECT * FROM payouts WHERE id = $1', [id], c);
+  });
+  res.json({ payout: payoutOut(payout), totals: await earningsSummary(req.user.id) });
 }));
 
 // Live status

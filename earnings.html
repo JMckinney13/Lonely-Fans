@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Earnings – Lonely Fans</title>
   <link rel="stylesheet" href="styles.css">
+  <style>
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.75rem; margin: 1rem 0; }
+    .stat { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 0.9rem; }
+    .stat .label { color: var(--muted); font-size: 0.8rem; }
+    .stat .value { font-size: 1.4rem; font-weight: 700; margin-top: 0.2rem; }
+    .stat .sub { color: var(--muted); font-size: 0.75rem; }
+    .kind { display: inline-block; font-size: 0.7rem; padding: 1px 6px; border-radius: 4px; background: #2a3142; margin-right: 0.4rem; text-transform: uppercase; }
+  </style>
 </head>
 <body>
   <header class="dash-header">
@@ -21,61 +29,80 @@
     <h1>Creator Earnings</h1>
     <div class="balance-card">
       <div class="balance-label">Available for Payout</div>
-      <div class="balance-amount" id="available">0</div>
+      <div class="balance-amount" id="available">…</div>
       <div class="balance-unit">SparkCoins</div>
     </div>
+    <div class="stat-grid" id="totals"><p class="note">Loading totals…</p></div>
 
     <h2>Request Payout</h2>
-    <p class="note">Earnings come from subscriptions and goal tips. Payout history is stored in this browser only (prototype). Minimum 50 SparkCoins. In production this connects to an adult-friendly processor (CCBill, Segpay, etc.) and requires identity verification + tax forms.</p>
+    <p class="note">Earnings come from subscriptions and tips. Minimum 50 SparkCoins; you can't pay out more than you've earned or more than is in your wallet. Payouts complete instantly in this prototype. In production this connects to an adult-friendly processor (CCBill, Segpay, etc.) and requires identity verification + tax forms.</p>
     <form id="payoutForm">
-      <label>Amount (SparkCoins)</label>
+      <label for="payoutAmount">Amount (SparkCoins)</label>
       <input type="number" id="payoutAmount" min="50" step="1" required>
-      <button type="submit">Request Payout</button>
+      <button type="submit" id="payoutBtn">Request Payout</button>
     </form>
-    <p id="status" class="message"></p>
+    <p id="status" class="message" role="status"></p>
 
     <h2>Payout History</h2>
-    <div id="payoutHistory" class="tx-list"></div>
+    <div id="payoutHistory" class="tx-list"><p class="note">Loading…</p></div>
+
+    <h2>Recent Earnings</h2>
+    <div id="earningList" class="tx-list"><p class="note">Loading…</p></div>
   </main>
   <script src="auth.js"></script>
   <script>
     const session = LonelyFansAuth.requireSession({ role: 'creator' });
     const esc = LonelyFansAuth.escapeHtml;
+    const $ = (id) => document.getElementById(id);
+    const fmtDate = (v) => { const d = LonelyFansAuth.parseServerDate(v); return d ? d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : ''; };
+    const KIND = { subscription: 'Sub', tip: 'Tip', other: 'Other' };
 
     async function refresh() {
-      const available = await LonelyFansAuth.getCreatorEarnings(session.id);
-      document.getElementById('available').textContent = available.toLocaleString();
-
-      const history = LonelyFansAuth.getCreatorPayouts(session.id);
-      const el = document.getElementById('payoutHistory');
-      if (history.length === 0) {
-        el.innerHTML = '<p class="note">No payouts yet.</p>';
-      } else {
-        el.innerHTML = history.slice().reverse().map(p => `
+      try {
+        const { totals, earnings, payouts } = await LonelyFansAuth.getEarnings();
+        $('available').textContent = totals.available.toLocaleString();
+        $('totals').innerHTML = `
+          <div class="stat"><div class="label">Subscriptions</div><div class="value" id="totalSubs">${totals.subscriptions.toLocaleString()}</div><div class="sub">${totals.subscriptionCount} payment${totals.subscriptionCount === 1 ? '' : 's'}</div></div>
+          <div class="stat"><div class="label">Tips</div><div class="value" id="totalTips">${totals.tips.toLocaleString()}</div><div class="sub">${totals.tipCount} tip${totals.tipCount === 1 ? '' : 's'}</div></div>
+          <div class="stat"><div class="label">Total earned</div><div class="value" id="totalEarned">${totals.earned.toLocaleString()}</div></div>
+          <div class="stat"><div class="label">Paid out</div><div class="value" id="totalPaid">${totals.paidOut.toLocaleString()}</div></div>`;
+        $('payoutHistory').innerHTML = payouts.length === 0 ? '<p class="note">No payouts yet.</p>' : payouts.map(p => `
           <div class="tx">
-            <div>${new Date(p.requestedAt).toLocaleDateString()} – ${esc(p.status)}</div>
-            <div class="positive">${p.amount.toLocaleString()}</div>
-          </div>
-        `).join('');
+            <div class="desc">Payout – ${esc(p.status)}<div class="meta">${esc(fmtDate(p.requestedAt))}</div></div>
+            <div class="amount">${p.amount.toLocaleString()}</div>
+          </div>`).join('');
+        $('earningList').innerHTML = earnings.length === 0 ? '<p class="note">No earnings yet. Subscriptions and tips will show up here.</p>' : earnings.map(t => `
+          <div class="tx">
+            <div class="desc"><span class="kind">${esc(KIND[t.kind] || t.kind)}</span>${esc(t.description)}<div class="meta">${esc(fmtDate(t.timestamp))}</div></div>
+            <div class="amount positive">+${t.amount.toLocaleString()}</div>
+          </div>`).join('');
+      } catch (err) {
+        $('available').textContent = '—';
+        $('totals').innerHTML = `<p class="message">Couldn't load earnings: ${esc(err.message)}</p>`;
+        $('payoutHistory').innerHTML = '';
+        $('earningList').innerHTML = '';
       }
     }
 
     if (session) {
-      document.getElementById('available').textContent = '…';
       refresh();
-      document.getElementById('payoutForm').addEventListener('submit', async (e) => {
+      $('payoutForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const status = document.getElementById('status');
-        const amount = parseInt(document.getElementById('payoutAmount').value, 10);
+        const status = $('status');
+        const btn = $('payoutBtn');
+        const amount = parseInt($('payoutAmount').value, 10);
+        btn.disabled = true; btn.textContent = 'Requesting…';
         try {
           await LonelyFansAuth.requestPayout(session.id, amount);
           status.className = 'message success';
-          status.textContent = 'Payout requested and completed (prototype).';
+          status.textContent = `Payout of ${amount.toLocaleString()} SparkCoins completed (prototype).`;
           e.target.reset();
           await refresh();
         } catch (err) {
           status.className = 'message';
           status.textContent = err.message;
+        } finally {
+          btn.disabled = false; btn.textContent = 'Request Payout';
         }
       });
     }

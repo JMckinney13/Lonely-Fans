@@ -354,47 +354,23 @@ async function isLive(creatorId) {
   }
 }
 
-const PAYOUTS_KEY = 'lonelyfans_payouts';
-
-function getPayouts() {
-  return JSON.parse(localStorage.getItem(PAYOUTS_KEY) || '[]');
+// Earnings & payouts (server-side)
+async function getEarnings() {
+  // Payout history used to live in this browser only; it's now on the server
+  localStorage.removeItem('lonelyfans_payouts');
+  return api('/earnings');
 }
-function savePayouts(payouts) {
-  localStorage.setItem(PAYOUTS_KEY, JSON.stringify(payouts));
-}
-
 async function getCreatorEarnings(creatorId) {
-  const txs = await getUserTransactions(creatorId);
-  const earned = txs.filter(t => t.type === 'earning').reduce((sum, t) => sum + t.amount, 0);
-  const paidOut = getPayouts()
-    .filter(p => p.creatorId === creatorId && p.status === 'completed')
-    .reduce((sum, p) => sum + p.amount, 0);
-  return Math.max(0, earned - paidOut);
+  const data = await getEarnings();
+  return data.totals.available;
 }
-
 async function requestPayout(creatorId, amount) {
-  const available = await getCreatorEarnings(creatorId);
-  if (!Number.isInteger(amount) || amount > available || amount < 50) {
-    throw new Error('Minimum payout is 50 SparkCoins and cannot exceed available balance.');
-  }
-  const payouts = getPayouts();
-  payouts.push({
-    id: Date.now().toString(),
-    creatorId,
-    amount,
-    status: 'pending', // in prototype we can auto-complete
-    requestedAt: new Date().toISOString()
-  });
-  savePayouts(payouts);
-  // Simulate instant completion for prototype
-  payouts[payouts.length - 1].status = 'completed';
-  payouts[payouts.length - 1].completedAt = new Date().toISOString();
-  savePayouts(payouts);
-  return payouts[payouts.length - 1];
+  if (!Number.isInteger(amount) || amount < 50) throw new Error('Minimum payout is 50 SparkCoins.');
+  const data = await api('/payouts', { method: 'POST', body: JSON.stringify({ amount }) });
+  return data.payout;
 }
-
-function getCreatorPayouts(creatorId) {
-  return getPayouts().filter(p => p.creatorId === creatorId);
+async function getCreatorPayouts(creatorId) {
+  return api('/payouts');
 }
 
 const REPORTS_KEY = 'lonelyfans_reports';
@@ -442,7 +418,7 @@ window.LonelyFansAuth = {
   addChatMessage, getChatMessages, setLive, isLive, getUsers,
   toggleFollow, isFollowing, getMyFollows, claimDailyStreak, getCreators,
   escapeHtml, parseServerDate, requireSession,
-  getCreatorEarnings, requestPayout, getCreatorPayouts,
+  getEarnings, getCreatorEarnings, requestPayout, getCreatorPayouts,
   submitReport, hasAttested, submitAttestation,
   API_BASE, api
 };
