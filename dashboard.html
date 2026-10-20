@@ -8,14 +8,14 @@
 </head>
 <body>
   <header class="dash-header">
-    <div class="logo-row">
-      <img src="assets/logo.jpg" alt="Lonely Fans" class="logo-img">
+    <a href="index.html" class="logo-row">
+      <img src="assets/logo.jpg" alt="" class="logo-img">
       <div class="logo">Lonely Fans</div>
-    </div>
-    <div>
-      <span id="userInfo"></span>
-      <button onclick="LonelyFansAuth.logout()" style="width:auto; margin-left:1rem;">Logout</button>
-    </div>
+    </a>
+    <nav class="header-nav">
+      <span id="userInfo" class="user-info"></span>
+      <button type="button" class="secondary" onclick="LonelyFansAuth.logout()">Logout</button>
+    </nav>
   </header>
   <main class="container">
     <h1>Welcome</h1>
@@ -23,47 +23,49 @@
   </main>
   <script src="auth.js"></script>
   <script>
-    const session = LonelyFansAuth.getSession();
-    if (!session) {
-      window.location.href = 'login.html';
-    }
-    if (!session.ageVerified) {
-      window.location.href = 'age-verify.html';
-    }
+    const session = LonelyFansAuth.requireSession();
+    if (session) renderDashboard();
 
-    document.getElementById('userInfo').textContent = `${session.email} (${session.role})`;
+    function renderDashboard() {
+      document.getElementById('userInfo').textContent =
+        `${session.email} (${session.role === 'creator' ? 'creator' : 'fan'})`;
 
-    // Daily streak
-    const streak = LonelyFansAuth.claimDailyStreak(session.id);
-    if (streak.claimed) {
-      document.getElementById('roleContent').insertAdjacentHTML('beforebegin',
-        `<div class="message success">Daily streak claimed! Day ${streak.streak} — +10 SparkCoins</div>`);
-    }
+      const content = document.getElementById('roleContent');
+      const id = encodeURIComponent(session.id);
+      if (session.role === 'creator') {
+        content.innerHTML = `
+          <h2>Creator Dashboard</h2>
+          <p class="note">Manage your page, go live, and track earnings.</p>
+          <div class="action-grid">
+            <a href="customize.html" class="btn">Customize Your Page</a>
+            <a href="live.html?id=${id}" class="btn">Go Live</a>
+            <a href="creator.html?id=${id}" class="btn secondary">View Your Public Page</a>
+            <a href="tiers.html" class="btn secondary">Manage Subscription Tiers</a>
+            <a href="earnings.html" class="btn secondary">Earnings &amp; Payouts</a>
+            <a href="wallet.html" class="btn secondary">SparkCoins Wallet</a>
+            <a href="attest.html" class="btn secondary">2257 Attestation</a>
+            <a href="report.html" class="btn secondary">Report Content</a>
+          </div>
+        `;
+      } else {
+        content.innerHTML = `
+          <h2>Fan Dashboard</h2>
+          <p class="note">Browse creators and manage your SparkCoins.</p>
+          <div class="action-grid">
+            <a href="browse.html" class="btn">Browse Creators</a>
+            <a href="wallet.html" class="btn secondary">Open SparkCoins Wallet</a>
+            <a href="report.html" class="btn secondary">Report Content</a>
+          </div>
+        `;
+      }
 
-    const content = document.getElementById('roleContent');
-    if (session.role === 'creator') {
-      content.innerHTML = `
-        <h2>Creator Dashboard</h2>
-        <p class="note">Manage your page, go live, and track earnings.</p>
-        <div style="display:grid; gap:0.6rem; margin-top:1.25rem;">
-          <a href="customize.html" class="btn">Customize Your Page</a>
-          <a href="tiers.html" class="btn secondary">Manage Subscription Tiers</a>
-          <a href="live.html?id=${session.id}" class="btn">Go Live</a>
-          <a href="earnings.html" class="btn secondary">Earnings & Payouts</a>
-          <a href="attest.html" class="btn secondary">2257 Attestation</a>
-          <a href="report.html" class="btn secondary">Report Content</a>
-        </div>
-      `;
-    } else {
-      content.innerHTML = `
-        <h2>Fan Dashboard</h2>
-        <p class="note">Browse creators and manage your SparkCoins.</p>
-        <div style="display:grid; gap:0.6rem; margin-top:1.25rem;">
-          <a href="browse.html" class="btn">Browse Creators</a>
-          <a href="wallet.html" class="btn">Open SparkCoins Wallet</a>
-          <a href="report.html" class="btn secondary">Report Content</a>
-        </div>
-      `;
+      // Daily streak (credited to the server-side wallet)
+      LonelyFansAuth.claimDailyStreak(session.id).then(streak => {
+        if (streak.claimed) {
+          content.insertAdjacentHTML('beforebegin',
+            `<div class="message success">Daily streak claimed! Day ${streak.streak} — +10 SparkCoins</div>`);
+        }
+      });
     }
   </script>
 </body>

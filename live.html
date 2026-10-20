@@ -9,7 +9,8 @@
     .live-layout { display: grid; grid-template-columns: 1fr 340px; gap: 1rem; max-width: 1200px; margin: 1rem auto; padding: 0 1rem; }
     @media (max-width: 800px) { 
       .live-layout { grid-template-columns: 1fr; } 
-      .side-panel { height: 50vh; }
+      .side-panel { height: auto; min-height: 60vh; }
+      .chat-messages { min-height: 240px; }
     }
     .empty { color: var(--muted); text-align: center; padding: 1.5rem; font-size: 0.9rem; }
     .video-area { background: #000; border-radius: 12px; aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; color: #666; position: relative; }
@@ -24,59 +25,84 @@
     .emote { font-size: 1.1rem; vertical-align: middle; }
     .chat-input { display: flex; gap: 0.4rem; align-items: center; }
     .chat-input input { flex: 1; }
-    .emoji-btn { background: transparent; border: none; font-size: 1.2rem; cursor: pointer; padding: 0.3rem; }
+    .chat-input button, .inline-form button { width: auto; margin: 0; padding: 0.6rem 0.9rem; }
+    .chat-input input, .inline-form input { padding: 0.6rem 0.75rem; min-width: 0; }
+    .emoji-btn, .chat-input .emoji-btn { background: transparent; border: none; font-size: 1.2rem; cursor: pointer; padding: 0.3rem; }
+    .emoji-btn:hover { background: transparent; }
+    .emoji-picker { background: #1a1f2e; padding: 0.4rem; border-radius: 8px; margin-top: 0.3rem; display: flex; gap: 0.2rem; flex-wrap: wrap; }
+    .emoji-picker[hidden] { display: none; }
+    .emoji-picker button { width: auto; margin: 0; background: transparent; font-size: 1.2rem; padding: 0.25rem 0.4rem; }
+    .emoji-picker button:hover { background: #2a3142; }
+    .inline-form { display: flex; gap: 0.4rem; align-items: center; margin-top: 0.5rem; }
+    .inline-form input { flex: 1; }
+    .inline-form .emoji-input { flex: 0 0 70px; }
+    .goal-form input { margin-top: 0.4rem; padding: 0.6rem 0.75rem; }
+    .goal-form button { margin-top: 0.6rem; padding: 0.6rem; }
+    .goal-box .message { margin: 0.4rem 0 0; font-size: 0.85rem; }
+    .goal-box .positive { color: var(--success); }
+    .small-btn { width: auto; margin-top: 0.6rem; padding: 0.4rem 0.8rem; font-size: 0.85rem; }
+    .creator-controls { margin-top: 1rem; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; }
+    .creator-controls[hidden] { display: none; }
+    .creator-controls h3 { font-size: 1rem; margin: 0.8rem 0 0; }
+    .creator-controls h3:first-child { margin-top: 0; }
+    .check-label { display: flex; align-items: center; gap: 0.5rem; color: var(--text); margin-top: 1rem; }
+    .check-label input { width: auto; }
+    .stream-title { font-size: 1.2rem; margin: 0.8rem 0 0; }
+    .small-link { font-size: 0.85rem; font-weight: 500; margin-left: 0.4rem; }
+    .msg.bot { color: #a5b4fc; }
+    .msg-time { color: var(--muted); font-size: 0.7rem; margin-left: 0.4rem; }
+    .chat-error { margin: 0 0 0.4rem; font-size: 0.85rem; min-height: 0; }
+    .chat-error:empty { display: none; }
   </style>
 </head>
 <body>
   <header class="dash-header">
-    <div class="logo-row">
-      <img src="assets/logo.jpg" alt="Lonely Fans" class="logo-img">
+    <a href="index.html" class="logo-row">
+      <img src="assets/logo.jpg" alt="" class="logo-img">
       <div class="logo">Lonely Fans</div>
-    </div>
-    <div>
+    </a>
+    <nav class="header-nav">
       <a href="dashboard.html">Dashboard</a>
-      <button onclick="LonelyFansAuth.logout()" style="width:auto; margin-left:1rem;">Logout</button>
-    </div>
+      <button type="button" class="secondary" onclick="LonelyFansAuth.logout()">Logout</button>
+    </nav>
   </header>
 
   <div class="live-layout">
     <div>
       <div class="video-area" id="videoArea">
-        <div class="live-badge">LIVE</div>
-        Simulated stream – creator is on camera
+        <div class="live-badge" id="liveBadge" hidden>LIVE</div>
+        <span id="videoText">Loading stream…</span>
       </div>
-      <div style="margin-top:1rem;display:none" id="creatorControls">
-          <h3>Chat Commands</h3>
-          <form onsubmit="addCommand(event)" style="display:flex;gap:0.4rem">
-            <input id="cmdTrigger" placeholder="!hello" style="flex:1">
-            <input id="cmdResponse" placeholder="Response" style="flex:2">
-            <button style="width:auto">Add</button>
-          </form>
-          <h3 style="margin-top:1rem">Custom Emotes</h3>
-          <form onsubmit="addEmote(event)" style="display:flex;gap:0.4rem">
-            <input id="emoteCode" placeholder=":heart:" style="flex:1">
-            <input id="emoteEmoji" placeholder="❤️" style="width:60px">
-            <button style="width:auto">Add</button>
-          </form>
-          <label style="margin-top:0.8rem"><input type="checkbox" id="slowMode" onchange="toggleSlow()"> Slow mode</label>
+      <h2 id="streamTitle" class="stream-title"></h2>
+      <div id="creatorControls" class="creator-controls" hidden>
+        <h3>Chat Commands</h3>
+        <form id="cmdForm" class="inline-form">
+          <input id="cmdTrigger" placeholder="!hello" required pattern="!\S+" title="Commands start with ! and have no spaces" maxlength="30">
+          <input id="cmdResponse" placeholder="Response" required maxlength="200">
+          <button type="submit">Add</button>
+        </form>
+        <h3>Custom Emotes</h3>
+        <form id="emoteForm" class="inline-form">
+          <input id="emoteCode" placeholder=":heart:" required pattern=":[A-Za-z0-9_]+:" title="Use the form :name:" maxlength="30">
+          <input id="emoteEmoji" placeholder="❤️" required maxlength="8" class="emoji-input">
+          <button type="submit">Add</button>
+        </form>
+        <label class="check-label"><input type="checkbox" id="slowMode"> Slow mode (5s between messages)</label>
+        <p id="controlStatus" class="message" role="status"></p>
       </div>
     </div>
     <div class="side-panel">
-      <div class="goal-box" id="goalBox">No active goal</div>
-      <div id="tipFeed" style="font-size:0.8rem;color:var(--muted);margin-bottom:0.6rem;max-height:60px;overflow:hidden"></div>
-      <div class="chat-messages" id="chat"></div>
-      <div class="chat-input">
-        <button class="emoji-btn" onclick="toggleEmoji()">😊</button>
-        <input type="text" id="chatInput" placeholder="Say something... or !command">
-        <button style="width:auto; margin:0" onclick="sendChat()">Send</button>
-      </div>
-      <div id="emojiPicker" style="display:none; background:#1a1f2e; padding:0.5rem; border-radius:8px; margin-top:0.3rem; font-size:1.2rem;">
-        <span onclick="insertEmoji('❤️')">❤️</span>
-        <span onclick="insertEmoji('🔥')">🔥</span>
-        <span onclick="insertEmoji('😂')">😂</span>
-        <span onclick="insertEmoji('😍')">😍</span>
-        <span onclick="insertEmoji('👍')">👍</span>
-        <span onclick="insertEmoji('🎉')">🎉</span>
+      <div class="goal-box" id="goalBox"><div class="empty">Loading goal…</div></div>
+      <div class="chat-messages" id="chat" aria-live="polite"><div class="empty">Connecting to chat…</div></div>
+      <p id="chatError" class="message chat-error" role="alert"></p>
+      <form class="chat-input" id="chatForm">
+        <button type="button" class="emoji-btn" id="emojiToggle" aria-label="Insert emoji">😊</button>
+        <input type="text" id="chatInput" placeholder="Say something... or !command" maxlength="500" autocomplete="off">
+        <button type="submit" id="sendBtn">Send</button>
+      </form>
+      <div id="emojiPicker" class="emoji-picker" hidden>
+        <button type="button">❤️</button><button type="button">🔥</button><button type="button">😂</button>
+        <button type="button">😍</button><button type="button">👍</button><button type="button">🎉</button>
       </div>
     </div>
   </div>
@@ -86,80 +112,146 @@
     const params = new URLSearchParams(location.search);
     const creatorId = params.get('id');
     const session = LonelyFansAuth.getSession();
-    if (!creatorId) { alert('No creator'); location.href = 'index.html'; }
+    const esc = LonelyFansAuth.escapeHtml;
+    const $ = (id) => document.getElementById(id);
+    const isCreator = !!(session && creatorId && session.id === creatorId);
+    let emotes = [];
+    let editingGoal = false;
 
-    const isCreator = session && session.id === creatorId;
-    if (isCreator) document.getElementById('creatorControls').style.display = 'block';
-
-    function renderTipFeed() {
-      const tips = LonelyFansAuth.getRecentTips(creatorId);
-      const el = document.getElementById('tipFeed');
-      if (!tips.length) { el.innerHTML = ''; return; }
-      el.innerHTML = tips.map(t => `<div>+${t.amount} SparkCoins tip</div>`).join('');
+    function showError(id, text) {
+      const el = $(id);
+      el.className = 'message';
+      el.textContent = text;
+      if (text) setTimeout(() => { if (el.textContent === text) el.textContent = ''; }, 5000);
+    }
+    function showOk(id, text) {
+      const el = $(id);
+      el.className = 'message success';
+      el.textContent = text;
+      setTimeout(() => { if (el.textContent === text) el.textContent = ''; }, 3000);
     }
 
-    function celebrateGoal() {
-      const box = document.getElementById('goalBox');
-      box.style.boxShadow = '0 0 0 3px #34d399';
-      setTimeout(() => box.style.boxShadow = '', 2000);
+    async function loadHeader() {
+      const [profile, live] = await Promise.all([
+        LonelyFansAuth.getProfile(creatorId).catch(() => null),
+        LonelyFansAuth.isLive(creatorId)
+      ]);
+      const name = (profile && profile.displayName) || 'Creator';
+      $('streamTitle').innerHTML = `${esc(name)} <a href="creator.html?id=${encodeURIComponent(creatorId)}" class="small-link">View page →</a>`;
+      document.title = name + ' – Live – Lonely Fans';
+      const on = isCreator || live;
+      $('liveBadge').hidden = !on;
+      $('videoText').textContent = on ? 'Simulated stream – creator is on camera' : `${name} is offline right now`;
     }
+
     async function renderGoal() {
+      // Don't wipe the form while the creator is typing a new goal
+      if (editingGoal || (document.activeElement && $('goalBox').contains(document.activeElement))) return;
       const goal = await LonelyFansAuth.getCreatorGoal(creatorId);
-      const box = document.getElementById('goalBox');
+      const box = $('goalBox');
       if (!goal) {
-        box.innerHTML = isCreator
-          ? `<form onsubmit="setGoal(event)"><input id="goalText" placeholder="Goal text" required><input id="goalTarget" type="number" placeholder="Target SparkCoins" required><button>Set Goal</button></form>`
-          : '<div class="empty-state" style="padding:1rem">No active goal</div>';
+        box.innerHTML = isCreator ? goalForm() : '<div class="empty">No active goal</div>';
         return;
       }
-      const pct = Math.min(100, (goal.current / goal.target) * 100);
+      const pct = goal.target ? Math.min(100, (goal.current / goal.target) * 100) : 0;
       box.innerHTML = `
-        <strong>${goal.text}</strong>
+        <strong>${esc(goal.text)}</strong>
         <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
         <div>${goal.current.toLocaleString()} / ${goal.target.toLocaleString()} SparkCoins</div>
-        ${goal.completed ? '<div class="positive">Goal completed!</div>' : ''}
+        ${goal.completed ? '<div class="positive">Goal completed! 🎉</div>' : ''}
         ${!isCreator && !goal.completed ? `
-          <div style="margin-top:0.5rem">
-            <input type="number" id="tipAmount" placeholder="Amount" style="width:100px">
-            <button style="width:auto" onclick="tip()">Tip</button>
-          </div>` : ''}
+          <form class="inline-form" onsubmit="tip(event)">
+            <input type="number" id="tipAmount" placeholder="Amount" min="1" step="1" required>
+            <button type="submit" id="tipBtn">Tip</button>
+          </form>` : ''}
+        ${isCreator ? '<button type="button" class="secondary small-btn" onclick="editGoal()">New goal</button>' : ''}
+        <p id="goalMsg" class="message" role="status"></p>
       `;
     }
-
-    function setGoal(e) {
-      e.preventDefault();
-      const text = document.getElementById('goalText').value;
-      const target = parseInt(document.getElementById('goalTarget').value, 10);
-      LonelyFansAuth.setCreatorGoal(creatorId, text, target);
-      renderGoal();
+    function goalForm() {
+      return `<form onsubmit="setGoal(event)" class="goal-form">
+          <input id="goalText" placeholder="Goal text (e.g. New mic)" required maxlength="80">
+          <input id="goalTarget" type="number" min="1" step="1" placeholder="Target SparkCoins" required>
+          <button type="submit">Set Goal</button>
+          <p id="goalMsg" class="message" role="status"></p>
+        </form>`;
+    }
+    function editGoal() {
+      editingGoal = true;
+      $('goalBox').innerHTML = goalForm();
+      $('goalText').focus();
     }
 
-    function tip() {
-      if (!session) { location.href = 'login.html'; return; }
-      const amount = parseInt(document.getElementById('tipAmount').value, 10);
-      if (!amount || amount < 1) return;
+    async function setGoal(e) {
+      e.preventDefault();
+      const btn = e.target.querySelector('button');
+      const text = $('goalText').value.trim();
+      const target = parseInt($('goalTarget').value, 10);
+      if (!text || !(target > 0)) return showError('goalMsg', 'Enter a goal and a target above 0.');
+      btn.disabled = true; btn.textContent = 'Saving…';
       try {
-        LonelyFansAuth.tipGoal(session.id, creatorId, amount);
-        renderGoal();
+        await LonelyFansAuth.setCreatorGoal(creatorId, text, target);
+        editingGoal = false;
+        document.activeElement && document.activeElement.blur();
+        await renderGoal();
       } catch (err) {
-        const box = document.getElementById('goalBox');
-        box.insertAdjacentHTML('beforeend', `<div class="message">${err.message}</div>`);
+        btn.disabled = false; btn.textContent = 'Set Goal';
+        showError('goalMsg', err.message);
       }
+    }
+
+    async function tip(e) {
+      e.preventDefault();
+      if (!session) { location.href = 'login.html'; return; }
+      const amount = parseInt($('tipAmount').value, 10);
+      if (!(amount > 0)) return showError('goalMsg', 'Enter a tip of at least 1 SparkCoin.');
+      const btn = $('tipBtn');
+      btn.disabled = true; btn.textContent = '…';
+      try {
+        await LonelyFansAuth.tipGoal(session.id, creatorId, amount);
+        document.activeElement && document.activeElement.blur();
+        await renderGoal();
+        showOk('goalMsg', `Thanks! You tipped ${amount} SparkCoins.`);
+      } catch (err) {
+        btn.disabled = false; btn.textContent = 'Tip';
+        showError('goalMsg', err.message);
+      }
+    }
+
+    function replaceEmotes(safeText) {
+      let t = safeText;
+      emotes.forEach(e => {
+        const code = esc(e.code).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        t = t.replace(new RegExp(code, 'gi'), `<span class="emote">${esc(e.emoji)}</span>`);
+      });
+      return t;
+    }
+
+    function renderMessages(msgs) {
+      const el = $('chat');
+      if (!Array.isArray(msgs) || msgs.length === 0) {
+        el.innerHTML = '<div class="empty">No messages yet. Say hello!</div>';
+        return;
+      }
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+      el.innerHTML = msgs.map(m => {
+        const badge = m.is_sub ? '<span class="badge">SUB</span>' : '';
+        const d = LonelyFansAuth.parseServerDate(m.created_at);
+        const time = d ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+        return `<div class="msg ${m.username === 'Bot' ? 'bot' : ''}">${badge}<strong>${esc(m.username)}:</strong> ${replaceEmotes(esc(m.text))} <span class="msg-time">${time}</span></div>`;
+      }).join('');
+      if (atBottom) el.scrollTop = el.scrollHeight;
+    }
+
+    async function renderChat() {
+      renderMessages(await LonelyFansAuth.getChatMessages(creatorId));
     }
 
     function startChatStream() {
-      let es;
-      try {
-        es = new EventSource(`${LonelyFansAuth.API_BASE}/chat/${creatorId}/stream`);
-      } catch {
-        setInterval(renderChatFallback, 2500);
-        return;
-      }
+      if (!window.EventSource) { renderChat(); setInterval(renderChat, 2500); return; }
+      const es = new EventSource(`${LonelyFansAuth.API_BASE}/chat/${encodeURIComponent(creatorId)}/stream`);
       es.onmessage = (e) => {
-        try {
-          const msgs = JSON.parse(e.data);
-          renderMessages(msgs);
-        } catch {}
+        try { renderMessages(JSON.parse(e.data)); } catch {}
       };
       es.onerror = () => {
         es.close();
@@ -167,90 +259,97 @@
       };
     }
 
-    function renderMessages(msgs) {
-      const el = document.getElementById('chat');
-      if (!msgs || msgs.length === 0) {
-        el.innerHTML = '<div class="empty">No messages yet. Say hello!</div>';
-        return;
-      }
-      el.innerHTML = msgs.map(m => {
-        const badge = m.is_sub ? '<span class="badge">SUB</span>' : '';
-        const text = replaceEmotes(m.text || '');
-        const time = m.created_at ? new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
-        return `<div class="msg ${m.username === 'Bot' ? 'bot' : ''}">${badge}<strong>${m.username}:</strong> ${text} <span style="color:var(--muted);font-size:0.7rem;margin-left:0.4rem">${time}</span></div>`;
-      }).join('');
-      el.scrollTop = el.scrollHeight;
-    }
-
-    function renderChatFallback() {
-      const msgs = LonelyFansAuth.getChatMessages(creatorId);
-      renderMessages(msgs);
-    }
-
-    let emotes = [];
-    async function loadEmotes() {
-      try {
-        emotes = await LonelyFansAuth.api(`/emotes/${creatorId}`);
-      } catch {}
-    }
-    function replaceEmotes(text) {
-      let t = text;
-      emotes.forEach(e => {
-        t = t.replace(new RegExp(e.code, 'gi'), `<span class="emote">${e.emoji}</span>`);
-      });
-      return t;
-    }
-
-    function sendChat() {
-      const input = document.getElementById('chatInput');
-      const text = input.value.trim();
-      if (!text || !session) return;
-      LonelyFansAuth.addChatMessage(creatorId, session.email.split('@')[0], text);
-      input.value = '';
-      setTimeout(renderChat, 200);
-    }
-
-    function toggleEmoji() {
-      const p = document.getElementById('emojiPicker');
-      p.style.display = p.style.display === 'none' ? 'block' : 'none';
-    }
-    function insertEmoji(e) {
-      const input = document.getElementById('chatInput');
-      input.value += e;
-      input.focus();
-    }
-
-    async function addEmote(e) {
+    async function sendChat(e) {
       e.preventDefault();
-      const code = document.getElementById('emoteCode').value;
-      const emoji = document.getElementById('emoteEmoji').value;
+      const input = $('chatInput');
+      const text = input.value.trim();
+      if (!text) return;
+      if (!session) { location.href = 'login.html'; return; }
+      const btn = $('sendBtn');
+      btn.disabled = true;
       try {
-        await LonelyFansAuth.api('/emotes', { method: 'POST', body: JSON.stringify({ code, emoji }) });
-        e.target.reset();
-        loadEmotes();
+        await LonelyFansAuth.addChatMessage(creatorId, session.email.split('@')[0], text);
+        input.value = '';
+        $('chatError').textContent = '';
+        await renderChat();
       } catch (err) {
-        alert(err.message); // keep for now — rare
+        showError('chatError', err.message);
+      } finally {
+        btn.disabled = false;
+        input.focus();
       }
     }
-    async function toggleSlow() {
-      const on = document.getElementById('slowMode').checked;
-      await LonelyFansAuth.api('/settings', { method: 'POST', body: JSON.stringify({ slow_mode: on }) });
+
+    async function loadEmotes() {
+      try { emotes = await LonelyFansAuth.api(`/emotes/${encodeURIComponent(creatorId)}`); } catch {}
     }
 
-    loadEmotes();
+    async function postControl(path, body, form, okText) {
+      const btn = form && form.querySelector('button');
+      if (btn) btn.disabled = true;
+      try {
+        await LonelyFansAuth.api(path, { method: 'POST', body: JSON.stringify(body) });
+        if (form) form.reset();
+        showOk('controlStatus', okText);
+        return true;
+      } catch (err) {
+        showError('controlStatus', err.message);
+        return false;
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
 
-    document.getElementById('chatInput').addEventListener('keypress', e => {
-      if (e.key === 'Enter') sendChat();
+    function initCreatorControls() {
+      $('creatorControls').hidden = false;
+      $('cmdForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const trigger = $('cmdTrigger').value.trim();
+        postControl('/commands', { trigger, response: $('cmdResponse').value.trim() }, e.target, `Command ${trigger} added.`);
+      });
+      $('emoteForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const code = $('emoteCode').value.trim();
+        if (await postControl('/emotes', { code, emoji: $('emoteEmoji').value.trim() }, e.target, `Emote ${code} added.`)) loadEmotes();
+      });
+      LonelyFansAuth.api(`/settings/${encodeURIComponent(creatorId)}`)
+        .then(s => { $('slowMode').checked = !!s.slow_mode; }).catch(() => {});
+      $('slowMode').addEventListener('change', async (e) => {
+        const on = e.target.checked;
+        if (!await postControl('/settings', { slow_mode: on }, null, `Slow mode ${on ? 'on' : 'off'}.`)) e.target.checked = !on;
+      });
+      LonelyFansAuth.setLive(creatorId, true).catch(() => {});
+      // Go offline when the creator leaves the page
+      window.addEventListener('pagehide', () => {
+        LonelyFansAuth.setLive(creatorId, false, { keepalive: true }).catch(() => {});
+      });
+    }
+
+    $('emojiToggle').addEventListener('click', () => { $('emojiPicker').hidden = !$('emojiPicker').hidden; });
+    $('emojiPicker').addEventListener('click', (e) => {
+      if (e.target.tagName !== 'BUTTON') return;
+      $('chatInput').value += e.target.textContent;
+      $('chatInput').focus();
     });
+    $('chatForm').addEventListener('submit', sendChat);
 
-    // Mark live when creator opens the page
-    if (isCreator) LonelyFansAuth.setLive(creatorId, true);
-
-    renderGoal();
-    renderTipFeed();
-    startChatStream();
-    setInterval(renderGoal, 3000);
-    setInterval(renderTipFeed, 4000);
+    if (!creatorId) {
+      document.querySelector('.live-layout').innerHTML =
+        '<div class="empty-state" style="grid-column:1/-1">No creator selected. <a href="browse.html">Browse creators</a></div>';
+    } else {
+      if (!session) {
+        $('chatInput').placeholder = 'Log in to chat';
+        $('chatInput').disabled = true;
+        $('sendBtn').textContent = 'Log in';
+        $('sendBtn').type = 'button';
+        $('sendBtn').onclick = () => { location.href = 'login.html'; };
+      }
+      if (isCreator) initCreatorControls();
+      loadHeader();
+      loadEmotes().then(renderGoal);
+      startChatStream();
+      setInterval(renderGoal, 4000);
+    }
   </script>
 </body>
 </html>

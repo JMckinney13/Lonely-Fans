@@ -8,14 +8,14 @@
 </head>
 <body>
   <header class="dash-header">
-    <div class="logo-row">
-      <img src="assets/logo.jpg" alt="Lonely Fans" class="logo-img">
+    <a href="index.html" class="logo-row">
+      <img src="assets/logo.jpg" alt="" class="logo-img">
       <div class="logo">Lonely Fans</div>
-    </div>
-    <div>
+    </a>
+    <nav class="header-nav">
       <a href="dashboard.html">Dashboard</a>
-      <button onclick="LonelyFansAuth.logout()" style="width:auto; margin-left:1rem;">Logout</button>
-    </div>
+      <button type="button" class="secondary" onclick="LonelyFansAuth.logout()">Logout</button>
+    </nav>
   </header>
   <main class="container">
     <h1>Manage Subscription Tiers</h1>
@@ -23,74 +23,94 @@
 
     <div id="tierList"></div>
 
-    <h2>Add / Edit Tier</h2>
+    <h2>Add a Tier</h2>
+    <p id="tierFull" class="note" hidden>You have 3 tiers (the maximum). Remove one to add another.</p>
     <form id="tierForm">
       <label>Tier Name</label>
-      <input type="text" id="tierName" placeholder="Fan, Close Fan, Intimate" required>
+      <input type="text" id="tierName" placeholder="Fan, Close Fan, Intimate" required maxlength="40">
       <label>Price (SparkCoins / month)</label>
-      <input type="number" id="tierPrice" min="1" required>
+      <input type="number" id="tierPrice" min="1" step="1" required>
       <label>Perks (one per line)</label>
       <textarea id="tierPerks" rows="4" placeholder="Live access&#10;Priority chat&#10;Exclusive VODs"></textarea>
       <button type="submit">Save Tier</button>
     </form>
-    <p id="status" class="message"></p>
+    <p id="status" class="message" role="status"></p>
   </main>
   <script src="auth.js"></script>
   <script>
-    const session = LonelyFansAuth.getSession();
-    if (!session || session.role !== 'creator') location.href = 'dashboard.html';
+    const session = LonelyFansAuth.requireSession({ role: 'creator' });
+    const esc = LonelyFansAuth.escapeHtml;
+    let tiers = [];
 
-    (async () => {
-      let tiers = await LonelyFansAuth.getCreatorTiers(session.id);
+    function setStatus(text, ok) {
+      const el = document.getElementById('status');
+      el.className = ok ? 'message success' : 'message';
+      el.textContent = text;
+    }
 
-      function render() {
-        const list = document.getElementById('tierList');
-        if (tiers.length === 0) {
-          list.innerHTML = '<p class="note">No tiers yet.</p>';
-        } else {
-          list.innerHTML = tiers.map((t, i) => `
-            <div class="tx">
-              <div><strong>${t.name}</strong> – ${t.price} SparkCoins<br><small>${(t.perks || []).join(', ')}</small></div>
-              <button class="secondary" style="width:auto" onclick="removeTier('${t.id}')">Remove</button>
-            </div>
-          `).join('');
-        }
+    function render() {
+      const list = document.getElementById('tierList');
+      const full = tiers.length >= 3;
+      document.querySelector('#tierForm button').disabled = full;
+      document.getElementById('tierFull').hidden = !full;
+      if (tiers.length === 0) {
+        list.innerHTML = '<p class="note">No tiers yet. Add your first one below.</p>';
+        return;
       }
+      list.innerHTML = tiers.map(t => `
+        <div class="tx">
+          <div class="desc"><strong>${esc(t.name)}</strong> – ${Number(t.price).toLocaleString()} SparkCoins<br><small class="note">${esc((t.perks || []).join(', '))}</small></div>
+          <button class="secondary" style="width:auto" onclick="removeTier(this, '${esc(t.id)}')">Remove</button>
+        </div>
+      `).join('');
+    }
 
-      window.removeTier = async (id) => {
-        await fetch(`${API_BASE}/tiers/${id}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${localStorage.getItem('lonelyfans_token')}` }
-        });
-        tiers = await LonelyFansAuth.getCreatorTiers(session.id);
-        render();
-      };
+    async function reload() {
+      tiers = await LonelyFansAuth.getCreatorTiers(session.id) || [];
+      render();
+    }
+
+    async function removeTier(btn, id) {
+      if (!confirm('Remove this tier? Existing subscribers keep their current subscription.')) return;
+      btn.disabled = true;
+      try {
+        await LonelyFansAuth.api(`/tiers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        await reload();
+        setStatus('Tier removed.', true);
+      } catch (err) {
+        btn.disabled = false;
+        setStatus(err.message);
+      }
+    }
+
+    if (session) {
+      document.getElementById('tierList').innerHTML = '<p class="note">Loading tiers…</p>';
+      reload();
 
       document.getElementById('tierForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        if (tiers.length >= 3) {
-          document.getElementById('status').textContent = 'Maximum 3 tiers.';
-          return;
-        }
-        const name = document.getElementById('tierName').value;
+        if (tiers.length >= 3) return setStatus('Maximum 3 tiers.');
+        const name = document.getElementById('tierName').value.trim();
         const price = parseInt(document.getElementById('tierPrice').value, 10);
         const perks = document.getElementById('tierPerks').value.split('\n').map(p => p.trim()).filter(Boolean);
-        await fetch(`${API_BASE}/tiers`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${localStorage.getItem('lonelyfans_token')}`
-          },
-          body: JSON.stringify({ name, price, perks })
-        });
-        tiers = await LonelyFansAuth.getCreatorTiers(session.id);
-        document.getElementById('tierForm').reset();
-        document.getElementById('status').textContent = 'Tier saved.';
-        render();
+        if (!name) return setStatus('Tier name is required.');
+        if (!(price > 0)) return setStatus('Price must be a whole number above 0.');
+        const btn = e.target.querySelector('button');
+        btn.disabled = true;
+        btn.textContent = 'Saving…';
+        try {
+          await LonelyFansAuth.api('/tiers', { method: 'POST', body: JSON.stringify({ name, price, perks }) });
+          e.target.reset();
+          await reload();
+          setStatus('Tier saved.', true);
+        } catch (err) {
+          setStatus(err.message);
+        } finally {
+          btn.textContent = 'Save Tier';
+          btn.disabled = tiers.length >= 3;
+        }
       });
-
-      render();
-    })();
+    }
   </script>
 </body>
 </html>

@@ -8,14 +8,14 @@
 </head>
 <body>
   <header class="dash-header">
-    <div class="logo-row">
-      <img src="assets/logo.jpg" alt="Lonely Fans" class="logo-img">
+    <a href="index.html" class="logo-row">
+      <img src="assets/logo.jpg" alt="" class="logo-img">
       <div class="logo">Lonely Fans</div>
-    </div>
-    <div>
+    </a>
+    <nav class="header-nav">
       <a href="dashboard.html">Dashboard</a>
-      <button onclick="LonelyFansAuth.logout()" style="width:auto; margin-left:1rem;">Logout</button>
-    </div>
+      <button type="button" class="secondary" onclick="LonelyFansAuth.logout()">Logout</button>
+    </nav>
   </header>
   <main class="container">
     <h1>18 U.S.C. § 2257 Attestation</h1>
@@ -26,8 +26,8 @@
       <li>I will not upload content involving minors or anyone who appears to be under 18.</li>
     </ul>
     <form id="attestForm">
-      <label>
-        <input type="checkbox" id="confirm" required> I attest under penalty of perjury that the above is true.
+      <label class="check-row">
+        <input type="checkbox" id="confirm" required> <span>I attest under penalty of perjury that the above is true.</span>
       </label>
       <button type="submit">Submit Attestation</button>
     </form>
@@ -35,15 +35,15 @@
   </main>
   <script src="auth.js"></script>
   <script>
-    const session = LonelyFansAuth.getSession();
-    if (!session || session.role !== 'creator') location.href = 'dashboard.html';
-    if (LonelyFansAuth.hasAttested(session.id)) {
+    const session = LonelyFansAuth.requireSession({ role: 'creator' });
+    if (session && LonelyFansAuth.hasAttested(session.id)) {
       document.getElementById('status').textContent = 'You have already completed attestation.';
       document.getElementById('attestForm').style.display = 'none';
     }
     document.getElementById('attestForm').addEventListener('submit', (e) => {
       e.preventDefault();
       LonelyFansAuth.submitAttestation(session.id);
+      document.getElementById('status').className = 'message success';
       document.getElementById('status').textContent = 'Attestation recorded. Thank you.';
       document.getElementById('attestForm').style.display = 'none';
     });

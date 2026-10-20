@@ -8,14 +8,14 @@
 </head>
 <body>
   <header class="dash-header">
-    <div class="logo-row">
-      <img src="assets/logo.jpg" alt="Lonely Fans" class="logo-img">
+    <a href="index.html" class="logo-row">
+      <img src="assets/logo.jpg" alt="" class="logo-img">
       <div class="logo">Lonely Fans</div>
-    </div>
-    <div>
+    </a>
+    <nav class="header-nav">
       <a href="dashboard.html">Dashboard</a>
-      <button onclick="LonelyFansAuth.logout()" style="width:auto; margin-left:1rem;">Logout</button>
-    </div>
+      <button type="button" class="secondary" onclick="LonelyFansAuth.logout()">Logout</button>
+    </nav>
   </header>
   <main class="container">
     <h1>SparkCoins Wallet</h1>
@@ -27,6 +27,7 @@
 
     <h2>Buy SparkCoins</h2>
     <p class="note">Prototype purchases are simulated. No real payment is processed.</p>
+    <p id="txMessage" class="message" role="status"></p>
     <div class="packs">
       <button class="pack" onclick="buyPack(100, 9.99)">100 SparkCoins<br><small>$9.99</small></button>
       <button class="pack" onclick="buyPack(500, 39.99)">500 SparkCoins<br><small>$39.99</small></button>
@@ -35,54 +36,65 @@
     </div>
 
     <h2>Recent Transactions</h2>
-    <p id="txMessage" class="message"></p>
-    <div id="transactions" class="tx-list"></div>
+        <div id="transactions" class="tx-list"></div>
   </main>
   <script src="auth.js"></script>
   <script>
-    const session = LonelyFansAuth.getSession();
-    if (!session) window.location.href = 'login.html';
-    if (!session.ageVerified) window.location.href = 'age-verify.html';
+    const session = LonelyFansAuth.requireSession();
+    const esc = LonelyFansAuth.escapeHtml;
 
     async function refresh() {
-      const balance = await LonelyFansAuth.getBalance(session.id);
-      document.getElementById('balance').textContent = balance.toLocaleString();
-      const txs = await LonelyFansAuth.getUserTransactions(session.id);
       const list = document.getElementById('transactions');
-      if (txs.length === 0) {
+      const [balance, txs] = await Promise.all([
+        LonelyFansAuth.getBalance(session.id),
+        LonelyFansAuth.getUserTransactions(session.id)
+      ]);
+      document.getElementById('balance').textContent = Number(balance || 0).toLocaleString();
+      if (!txs.length) {
         list.innerHTML = '<div class="empty-state">No transactions yet.</div>';
-      } else {
-        list.innerHTML = txs.slice(0, 15).map(tx => {
-          const isPositive = tx.amount > 0;
-          const date = tx.timestamp ? new Date(tx.timestamp).toLocaleDateString() : '';
-          return `
-            <div class="tx">
-              <div class="desc">
-                <div>${tx.description || 'Transaction'}</div>
-                ${date ? `<div class="meta">${date}</div>` : ''}
-              </div>
-              <div class="amount ${isPositive ? 'positive' : 'negative'}">${isPositive ? '+' : ''}${tx.amount.toLocaleString()}</div>
-            </div>
-          `;
-        }).join('');
+        return;
       }
+      list.innerHTML = txs.slice(0, 15).map(tx => {
+        const isPositive = tx.amount > 0;
+        const d = LonelyFansAuth.parseServerDate(tx.timestamp);
+        return `
+          <div class="tx">
+            <div class="desc">
+              <div>${esc(tx.description || 'Transaction')}</div>
+              ${d ? `<div class="meta">${d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</div>` : ''}
+            </div>
+            <div class="amount ${isPositive ? 'positive' : 'negative'}">${isPositive ? '+' : ''}${tx.amount.toLocaleString()}</div>
+          </div>
+        `;
+      }).join('');
     }
 
     async function buyPack(amount, price) {
       const msg = document.getElementById('txMessage');
+      const packs = document.querySelectorAll('.pack');
+      packs.forEach(p => p.disabled = true);
+      msg.className = 'message';
+      msg.textContent = 'Processing…';
       try {
         await LonelyFansAuth.buyCoins(amount, price);
         await refresh();
-        if (msg) {
-          msg.className = 'message success';
-          msg.textContent = `Added ${amount} SparkCoins to your wallet.`;
-        }
+        msg.className = 'message success';
+        msg.textContent = `Added ${amount.toLocaleString()} SparkCoins to your wallet.`;
       } catch (err) {
-        if (msg) msg.textContent = err.message;
+        msg.className = 'message';
+        msg.textContent = err.message;
+      } finally {
+        packs.forEach(p => p.disabled = false);
       }
     }
 
-    refresh();
+    if (session) {
+      document.getElementById('balance').textContent = '…';
+      document.getElementById('transactions').innerHTML = '<div class="empty-state">Loading…</div>';
+      refresh().catch(err => {
+        document.getElementById('transactions').innerHTML = `<div class="empty-state">Couldn't load wallet: ${esc(err.message)}</div>`;
+      });
+    }
   </script>
 </body>
 </html>

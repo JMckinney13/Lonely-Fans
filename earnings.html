@@ -8,14 +8,14 @@
 </head>
 <body>
   <header class="dash-header">
-    <div class="logo-row">
-      <img src="assets/logo.jpg" alt="Lonely Fans" class="logo-img">
+    <a href="index.html" class="logo-row">
+      <img src="assets/logo.jpg" alt="" class="logo-img">
       <div class="logo">Lonely Fans</div>
-    </div>
-    <div>
+    </a>
+    <nav class="header-nav">
       <a href="dashboard.html">Dashboard</a>
-      <button onclick="LonelyFansAuth.logout()" style="width:auto; margin-left:1rem;">Logout</button>
-    </div>
+      <button type="button" class="secondary" onclick="LonelyFansAuth.logout()">Logout</button>
+    </nav>
   </header>
   <main class="container">
     <h1>Creator Earnings</h1>
@@ -26,10 +26,10 @@
     </div>
 
     <h2>Request Payout</h2>
-    <p class="note">Minimum 50 SparkCoins. In production this connects to an adult-friendly processor (CCBill, Segpay, etc.) and requires identity verification + tax forms.</p>
+    <p class="note">Earnings come from subscriptions and goal tips. Payout history is stored in this browser only (prototype). Minimum 50 SparkCoins. In production this connects to an adult-friendly processor (CCBill, Segpay, etc.) and requires identity verification + tax forms.</p>
     <form id="payoutForm">
       <label>Amount (SparkCoins)</label>
-      <input type="number" id="payoutAmount" min="50" required>
+      <input type="number" id="payoutAmount" min="50" step="1" required>
       <button type="submit">Request Payout</button>
     </form>
     <p id="status" class="message"></p>
@@ -39,11 +39,11 @@
   </main>
   <script src="auth.js"></script>
   <script>
-    const session = LonelyFansAuth.getSession();
-    if (!session || session.role !== 'creator') location.href = 'dashboard.html';
+    const session = LonelyFansAuth.requireSession({ role: 'creator' });
+    const esc = LonelyFansAuth.escapeHtml;
 
-    function refresh() {
-      const available = LonelyFansAuth.getCreatorEarnings(session.id);
+    async function refresh() {
+      const available = await LonelyFansAuth.getCreatorEarnings(session.id);
       document.getElementById('available').textContent = available.toLocaleString();
 
       const history = LonelyFansAuth.getCreatorPayouts(session.id);
@@ -51,29 +51,34 @@
       if (history.length === 0) {
         el.innerHTML = '<p class="note">No payouts yet.</p>';
       } else {
-        el.innerHTML = history.map(p => `
+        el.innerHTML = history.slice().reverse().map(p => `
           <div class="tx">
-            <div>${new Date(p.requestedAt).toLocaleDateString()} – ${p.status}</div>
+            <div>${new Date(p.requestedAt).toLocaleDateString()} – ${esc(p.status)}</div>
             <div class="positive">${p.amount.toLocaleString()}</div>
           </div>
         `).join('');
       }
     }
 
-    document.getElementById('payoutForm').addEventListener('submit', (e) => {
-      e.preventDefault();
-      const amount = parseInt(document.getElementById('payoutAmount').value, 10);
-      try {
-        LonelyFansAuth.requestPayout(session.id, amount);
-        document.getElementById('status').textContent = 'Payout requested and completed (prototype).';
-        document.getElementById('payoutForm').reset();
-        refresh();
-      } catch (err) {
-        document.getElementById('status').textContent = err.message;
-      }
-    });
-
-    refresh();
+    if (session) {
+      document.getElementById('available').textContent = '…';
+      refresh();
+      document.getElementById('payoutForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const status = document.getElementById('status');
+        const amount = parseInt(document.getElementById('payoutAmount').value, 10);
+        try {
+          await LonelyFansAuth.requestPayout(session.id, amount);
+          status.className = 'message success';
+          status.textContent = 'Payout requested and completed (prototype).';
+          e.target.reset();
+          await refresh();
+        } catch (err) {
+          status.className = 'message';
+          status.textContent = err.message;
+        }
+      });
+    }
   </script>
 </body>
 </html>

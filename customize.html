@@ -8,26 +8,26 @@
 </head>
 <body>
   <header class="dash-header">
-    <div class="logo-row">
-      <img src="assets/logo.jpg" alt="Lonely Fans" class="logo-img">
+    <a href="index.html" class="logo-row">
+      <img src="assets/logo.jpg" alt="" class="logo-img">
       <div class="logo">Lonely Fans</div>
-    </div>
-    <div>
+    </a>
+    <nav class="header-nav">
       <a href="dashboard.html">Dashboard</a>
-      <button onclick="LonelyFansAuth.logout()" style="width:auto; margin-left:1rem;">Logout</button>
-    </div>
+      <button type="button" class="secondary" onclick="LonelyFansAuth.logout()">Logout</button>
+    </nav>
   </header>
   <main class="container wide">
     <h1>Customize Your Creator Page</h1>
-    <p class="note">Changes are saved locally in this prototype. Live preview updates as you type.</p>
+    <p class="note">Changes are saved to your account. The preview updates as you type.</p>
 
     <div class="editor-layout">
       <form id="profileForm" class="editor-form">
         <label>Display Name</label>
-        <input type="text" id="displayName" required>
+        <input type="text" id="displayName" required maxlength="40">
 
         <label>Bio</label>
-        <textarea id="bio" rows="4"></textarea>
+        <textarea id="bio" rows="4" maxlength="500"></textarea>
 
         <label>Banner Image URL</label>
         <input type="url" id="bannerUrl" placeholder="https://example.com/banner.jpg">
@@ -45,79 +45,93 @@
           <option value="bold">Bold</option>
         </select>
 
-        <button type="submit">Save Changes</button>
-        <p id="saveStatus" class="message"></p>
+        <button type="submit" id="saveBtn" disabled>Loading…</button>
+        <p id="saveStatus" class="message" role="status"></p>
       </form>
 
       <div class="preview-panel">
         <h3>Live Preview</h3>
         <div id="preview" class="creator-preview"></div>
-        <p><a id="publicLink" href="#" target="_blank">Open public page →</a></p>
+        <p><a id="publicLink" href="#" target="_blank" rel="noopener">Open public page →</a></p>
       </div>
     </div>
   </main>
   <script src="auth.js"></script>
   <script>
-    const session = LonelyFansAuth.getSession();
-    if (!session || session.role !== 'creator') {
-      window.location.href = 'dashboard.html';
+    const session = LonelyFansAuth.requireSession({ role: 'creator' });
+    const esc = LonelyFansAuth.escapeHtml;
+    const FIELDS = ['displayName', 'bio', 'bannerUrl', 'themeColor', 'accentColor', 'layout'];
+
+    function readForm() {
+      const data = {};
+      FIELDS.forEach(id => data[id] = document.getElementById(id).value.trim());
+      return data;
     }
 
-
-    (async () => {
-      const profile = await LonelyFansAuth.getProfile(session.id) || {};
-      document.getElementById('displayName').value = profile.displayName || '';
-      document.getElementById('bio').value = profile.bio || '';
-      document.getElementById('bannerUrl').value = profile.bannerUrl || '';
-      document.getElementById('themeColor').value = profile.themeColor || '#ff4d8d';
-      document.getElementById('accentColor').value = profile.accentColor || '#ff8ab3';
-      document.getElementById('layout').value = profile.layout || 'classic';
-      renderPreview();
-    })();
+    function safeUrl(url) {
+      try {
+        const u = new URL(url);
+        return (u.protocol === 'https:' || u.protocol === 'http:') ? u.href : '';
+      } catch { return ''; }
+    }
 
     function renderPreview() {
-      const data = {
-        displayName: document.getElementById('displayName').value,
-        bio: document.getElementById('bio').value,
-        bannerUrl: document.getElementById('bannerUrl').value,
-        themeColor: document.getElementById('themeColor').value,
-        accentColor: document.getElementById('accentColor').value,
-        layout: document.getElementById('layout').value
-      };
+      const data = readForm();
       const preview = document.getElementById('preview');
       preview.style.setProperty('--theme', data.themeColor);
       preview.style.setProperty('--accent', data.accentColor);
       preview.className = 'creator-preview layout-' + data.layout;
+      const banner = safeUrl(data.bannerUrl);
       preview.innerHTML = `
-        ${data.bannerUrl ? `<div class="banner" style="background-image:url('${data.bannerUrl}')"></div>` : '<div class="banner placeholder">Banner</div>'}
+        ${banner ? `<div class="banner" style="background-image:url('${esc(encodeURI(banner))}')"></div>` : '<div class="banner placeholder">Banner</div>'}
         <div class="info">
-          <h2>${data.displayName || 'Your Name'}</h2>
-          <p>${data.bio || 'Your bio appears here.'}</p>
+          <h2>${esc(data.displayName || 'Your Name')}</h2>
+          <p>${esc(data.bio || 'Your bio appears here.')}</p>
         </div>
       `;
     }
 
-    ['displayName','bio','bannerUrl','themeColor','accentColor','layout'].forEach(id => {
-      document.getElementById(id).addEventListener('input', renderPreview);
-    });
-    renderPreview();
+    if (session) {
+      FIELDS.forEach(id => document.getElementById(id).addEventListener('input', renderPreview));
+      document.getElementById('publicLink').href = 'creator.html?id=' + encodeURIComponent(session.id);
+      renderPreview();
 
-    document.getElementById('publicLink').href = 'creator.html?id=' + session.id;
+      (async () => {
+        const btn = document.getElementById('saveBtn');
+        const profile = await LonelyFansAuth.getProfile() || {};
+        document.getElementById('displayName').value = profile.displayName || '';
+        document.getElementById('bio').value = profile.bio || '';
+        document.getElementById('bannerUrl').value = profile.bannerUrl || '';
+        document.getElementById('themeColor').value = profile.themeColor || '#ff4d8d';
+        document.getElementById('accentColor').value = profile.accentColor || '#ff8ab3';
+        document.getElementById('layout').value = profile.layout || 'classic';
+        renderPreview();
+        btn.disabled = false;
+        btn.textContent = 'Save Changes';
+      })();
 
-    document.getElementById('profileForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const data = {
-        displayName: document.getElementById('displayName').value,
-        bio: document.getElementById('bio').value,
-        bannerUrl: document.getElementById('bannerUrl').value,
-        themeColor: document.getElementById('themeColor').value,
-        accentColor: document.getElementById('accentColor').value,
-        layout: document.getElementById('layout').value
-      };
-      await LonelyFansAuth.saveProfile(session.id, data);
-      document.getElementById('saveStatus').textContent = 'Saved!';
-      setTimeout(() => document.getElementById('saveStatus').textContent = '', 2000);
-    });
+      document.getElementById('profileForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const status = document.getElementById('saveStatus');
+        const btn = document.getElementById('saveBtn');
+        const data = readForm();
+        if (!data.displayName) { status.className = 'message'; status.textContent = 'Display name is required.'; return; }
+        btn.disabled = true;
+        btn.textContent = 'Saving…';
+        try {
+          await LonelyFansAuth.saveProfile(session.id, data);
+          status.className = 'message success';
+          status.textContent = 'Saved!';
+          setTimeout(() => { if (status.textContent === 'Saved!') status.textContent = ''; }, 2500);
+        } catch (err) {
+          status.className = 'message';
+          status.textContent = err.message;
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Save Changes';
+        }
+      });
+    }
   </script>
 </body>
 </html>

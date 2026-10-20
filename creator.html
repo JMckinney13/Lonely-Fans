@@ -8,13 +8,13 @@
 </head>
 <body>
   <header class="dash-header">
-    <div class="logo-row">
-      <img src="assets/logo.jpg" alt="Lonely Fans" class="logo-img">
+    <a href="index.html" class="logo-row">
+      <img src="assets/logo.jpg" alt="" class="logo-img">
       <div class="logo">Lonely Fans</div>
-    </div>
-    <div>
+    </a>
+    <nav class="header-nav" id="creatorNav">
       <a href="index.html">Home</a>
-    </div>
+    </nav>
   </header>
   <main id="creatorPage" class="creator-page">
     <p>Loading creator...</p>
@@ -24,75 +24,101 @@
     const params = new URLSearchParams(window.location.search);
     const creatorId = params.get('id');
     const session = LonelyFansAuth.getSession();
+    const esc = LonelyFansAuth.escapeHtml;
+    const page = document.getElementById('creatorPage');
 
-      if (!creatorId) {
-        document.getElementById('creatorPage').innerHTML = '<div class="empty-state">No creator specified.</div>';
-      } else {
-      (async () => {
-        const page = document.getElementById('creatorPage');
-        page.innerHTML = '<div class="empty-state">Loading creator...</div>';
-        try {
-          const profile = await LonelyFansAuth.getProfile(creatorId);
-          if (!profile) {
-            page.innerHTML = '<div class="empty-state">Creator not found.</div>';
-            return;
-          }
-          const tiers = await LonelyFansAuth.getCreatorTiers(creatorId) || [];
-          const subscribed = session && await LonelyFansAuth.isSubscribed(session.id, creatorId);
-
-          page.style.setProperty('--theme', profile.themeColor || '#ff6b6b');
-          page.style.setProperty('--accent', profile.accentColor || '#ff8e8e');
-
-          let tiersHtml = tiers.length === 0 
-            ? '<p class="note">No subscription tiers set yet.</p>'
-            : tiers.map(t => `
-              <div class="tier-card">
-                <h3>${t.name}</h3>
-                <div class="price">${t.price} SparkCoins / month</div>
-                <ul>${(t.perks || []).map(p => `<li>${p}</li>`).join('')}</ul>
-                ${subscribed ? '<button disabled>Subscribed</button>' : 
-                  `<button onclick="doSubscribe('${t.id}', ${t.price})">Subscribe</button>`}
-              </div>
-            `).join('');
-
-          page.innerHTML = `
-            ${profile.bannerUrl ? `<div class="banner" style="background-image:url('${profile.bannerUrl}')"></div>` : ''}
-            <div class="info-card">
-              <h1>${profile.displayName || 'Creator'}</h1>
-              <p>${profile.bio || 'No bio yet.'}</p>
-              <div style="display:flex;gap:0.5rem;margin:0.8rem 0">
-                <a href="live.html?id=${creatorId}" class="btn" style="width:auto">Watch Live</a>
-                ${session && session.id !== creatorId ? `<button class="secondary" style="width:auto" onclick="doFollow()">${LonelyFansAuth.isFollowing(session.id, creatorId) ? 'Following' : 'Follow'}</button>` : ''}
-              </div>
-              <h2>Subscription Tiers</h2>
-              <div class="tiers">${tiersHtml}</div>
-            </div>
-          `;
-          document.title = (profile.displayName || 'Creator') + ' – Lonely Fans';
-        } catch (err) {
-          page.innerHTML = `<div class="empty-state">Failed to load creator: ${err.message}</div>`;
-        }
-      })();
-      }
-
-    function doFollow() {
-      if (!session) { location.href = 'login.html'; return; }
-      LonelyFansAuth.toggleFollow(session.id, creatorId);
-      location.reload();
+    if (session) {
+      document.getElementById('creatorNav').innerHTML = '<a href="browse.html">Browse</a><a href="dashboard.html">Dashboard</a>';
     }
 
-    function doSubscribe(tierId, price) {
-      if (!session) {
-        location.href = 'login.html';
-        return;
-      }
+    function safeUrl(url) {
+      try { const u = new URL(url); return ['http:', 'https:'].includes(u.protocol) ? u.href : ''; } catch { return ''; }
+    }
+    const safeColor = (c, d) => /^#[0-9a-f]{3,8}$/i.test(c || '') ? c : d;
+
+    async function load() {
+      page.innerHTML = '<div class="empty-state">Loading creator…</div>';
       try {
-        LonelyFansAuth.subscribe(session.id, creatorId, tierId, price);
-        location.reload();
+        const profile = await LonelyFansAuth.getProfile(creatorId);
+        if (!profile) {
+          page.innerHTML = '<div class="empty-state">Creator not found. <a href="browse.html">Browse creators</a></div>';
+          return;
+        }
+        const isOwner = !!(session && session.id === creatorId);
+        const [tiers, subscribed, live] = await Promise.all([
+          LonelyFansAuth.getCreatorTiers(creatorId),
+          session && !isOwner ? LonelyFansAuth.isSubscribed(session.id, creatorId) : false,
+          LonelyFansAuth.isLive(creatorId)
+        ]);
+
+        page.style.setProperty('--theme', safeColor(profile.themeColor, '#ff6b6b'));
+        page.style.setProperty('--accent', safeColor(profile.accentColor, '#ff8e8e'));
+        page.className = 'creator-page layout-' + (['classic', 'minimal', 'bold'].includes(profile.layout) ? profile.layout : 'classic');
+
+        const tiersHtml = !tiers || tiers.length === 0
+          ? '<p class="note">No subscription tiers set yet.</p>'
+          : tiers.map(t => `
+            <div class="tier-card">
+              <h3>${esc(t.name)}</h3>
+              <div class="price">${Number(t.price).toLocaleString()} SparkCoins / month</div>
+              <ul>${(t.perks || []).map(p => `<li>${esc(p)}</li>`).join('')}</ul>
+              ${isOwner ? '' : subscribed ? '<button disabled>Subscribed</button>' :
+                `<button onclick="doSubscribe(this, '${esc(t.id)}', ${Number(t.price)})">Subscribe</button>`}
+            </div>
+          `).join('');
+
+        const banner = safeUrl(profile.bannerUrl);
+        page.innerHTML = `
+          ${banner ? `<div class="banner" style="background-image:url('${esc(encodeURI(banner))}')"></div>` : ''}
+          <div class="info-card">
+            <h1>${esc(profile.displayName || 'Creator')} ${live ? '<span class="live-dot">● LIVE</span>' : ''}</h1>
+            <p>${esc(profile.bio || 'No bio yet.')}</p>
+            <div class="card-actions">
+              <a href="live.html?id=${encodeURIComponent(creatorId)}" class="btn small">${isOwner ? 'Go Live' : live ? 'Watch Live' : 'Stream &amp; Chat'}</a>
+              ${isOwner ? '<a href="customize.html" class="btn small secondary">Edit Page</a>' : ''}
+              ${session && !isOwner ? `<button class="secondary btn small" onclick="doFollow(this)">${LonelyFansAuth.isFollowing(session.id, creatorId) ? 'Following' : 'Follow'}</button>` : ''}
+            </div>
+            <h2>Subscription Tiers</h2>
+            <p id="subMsg" class="message" role="status"></p>
+            <div class="tiers">${tiersHtml}</div>
+          </div>
+        `;
+        document.title = (profile.displayName || 'Creator') + ' – Lonely Fans';
       } catch (err) {
-        const page = document.getElementById('creatorPage');
-        page.insertAdjacentHTML('beforeend', `<div class="message">${err.message}</div>`);
+        page.innerHTML = `<div class="empty-state">Failed to load creator: ${esc(err.message)}</div>`;
       }
+    }
+
+    function doFollow(btn) {
+      if (!session) { location.href = 'login.html'; return; }
+      const nowFollowing = LonelyFansAuth.toggleFollow(session.id, creatorId);
+      btn.textContent = nowFollowing ? 'Following' : 'Follow';
+    }
+
+    async function doSubscribe(btn, tierId, price) {
+      if (!session) { location.href = 'login.html'; return; }
+      if (!confirm(`Subscribe for ${price.toLocaleString()} SparkCoins?`)) return;
+      btn.disabled = true;
+      btn.textContent = 'Subscribing…';
+      try {
+        await LonelyFansAuth.subscribe(session.id, creatorId, tierId, price);
+        await load();
+        const msg = document.getElementById('subMsg');
+        msg.className = 'message success';
+        msg.textContent = 'Subscribed! You now get a SUB badge in chat.';
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Subscribe';
+        const msg = document.getElementById('subMsg');
+        msg.className = 'message';
+        msg.innerHTML = `${esc(err.message)}${/SparkCoins/.test(err.message) ? ' <a href="wallet.html">Buy SparkCoins</a>' : ''}`;
+      }
+    }
+
+    if (!creatorId) {
+      page.innerHTML = '<div class="empty-state">No creator specified. <a href="browse.html">Browse creators</a></div>';
+    } else {
+      load();
     }
   </script>
 </body>

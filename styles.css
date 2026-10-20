@@ -285,3 +285,33 @@ a:hover { text-decoration: underline; }
 .chat-input { display: flex; gap: 0.4rem; }
 .chat-input input { flex: 1; margin: 0; }
 .chat-input button { width: auto; margin: 0; }
+
+/* Shared header nav + utilities */
+a.logo-row { color: inherit; text-decoration: none; }
+a.logo-row:hover { text-decoration: none; }
+.header-nav { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; justify-content: flex-end; }
+.header-nav button { width: auto; margin: 0; padding: 0.45rem 0.9rem; font-size: 0.9rem; }
+.user-info { color: var(--muted); font-size: 0.85rem; overflow-wrap: anywhere; }
+.action-grid { display: grid; gap: 0.6rem; margin-top: 1.25rem; }
+.action-grid .btn { margin-top: 0; }
+.btn.small { width: auto; margin-top: 0; padding: 0.5rem 1rem; font-size: 0.9rem; }
+button:disabled, button:disabled:hover { opacity: 0.6; cursor: not-allowed; background: var(--accent); transform: none; }
+button.secondary:disabled, .pack:disabled, .pack:disabled:hover { background: transparent; }
+.pack { margin-top: 0; width: auto; font-weight: 500; }
+.tx > button { flex-shrink: 0; margin: 0 0 0 0.75rem; }
+.message:empty { display: none; }
+.check-row { display: flex; align-items: flex-start; gap: 0.6rem; color: var(--text); }
+.check-row input { width: auto; margin-top: 0.3rem; }
+.button-stack { display: grid; gap: 0.6rem; }
+.button-stack button { margin-top: 0; }
+@media (max-width: 600px) {
+  .user-info { display: none; }
+  .creator-page { padding: 0.75rem; }
+  .balance-amount { font-size: 2.2rem; }
+}
+.live-dot { color: #ff6b6b; font-size: 0.75rem; font-weight: 600; margin-left: 0.3rem; vertical-align: middle; }
+.card-actions { display: flex; gap: 0.5rem; margin: 0.8rem 0; flex-wrap: wrap; }
+.card-actions .btn, .card-actions button { width: auto; margin-top: 0; }
+.live-dot { color: #ff6b6b; font-size: 0.75rem; font-weight: 600; margin-left: 0.3rem; vertical-align: middle; }
+.card-actions { display: flex; gap: 0.5rem; margin: 0.8rem 0; flex-wrap: wrap; }
+.card-actions .btn, .card-actions button { width: auto; margin-top: 0; }

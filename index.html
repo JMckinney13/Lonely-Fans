@@ -113,6 +113,9 @@
     }
     footer a { color: var(--accent-soft); text-decoration: none; margin: 0 0.5rem; }
     .hidden { display: none !important; }
+    a.logo-row { display: flex; align-items: center; gap: 0.5rem; text-decoration: none; color: inherit; }
+    .index-nav a { color: var(--accent-soft); text-decoration: none; font-weight: 600; }
+    @media (max-width: 600px) { header { padding: 1rem; } .logo { font-size: 1.3rem; } }
   </style>
 </head>
 <body>
@@ -129,11 +132,11 @@
   </div>
 
   <header>
-    <div class="logo-row">
-      <img src="assets/logo.jpg" alt="Lonely Fans" class="logo-img">
+    <a href="index.html" class="logo-row">
+      <img src="assets/logo.jpg" alt="" class="logo-img">
       <div class="logo">Lonely Fans</div>
-    </div>
-    <div>SparkCoins</div>
+    </a>
+    <nav class="index-nav"><a href="login.html">Log in</a></nav>
   </header>
 
   <main>
@@ -154,10 +157,10 @@
   </main>
 
   <footer>
-    <a href="#">Privacy</a>
-    <a href="#">Terms</a>
-    <a href="#">2257</a>
-    <a href="#">Age Verification</a>
+    <a href="launch.html">Launch Checklist</a>
+    <a href="attest.html">2257</a>
+    <a href="age-verify.html">Age Verification</a>
+    <a href="login.html">Log in</a>
     <div style="margin-top: 0.5rem;">© 2026 Lonely Fans. Prototype – Not for production use.</div>
   </footer>
 
@@ -176,28 +179,30 @@
     }
 
     // Live Now strip
-    (function() {
-      const users = JSON.parse(localStorage.getItem('lf_users') || '[]');
-      const live = users.filter(u => u.role === 'creator' && localStorage.getItem('lf_live_' + u.id) === 'true');
+    (async function() {
       const grid = document.getElementById('liveGrid');
+      const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;padding:1rem">Checking who\'s live…</div>';
+      let live = [];
+      try {
+        const res = await fetch('https://lonely-fans.onrender.com/api/creators');
+        if (res.ok) live = (await res.json()).filter(c => c.isLive);
+      } catch {}
       if (!live.length) {
         grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;padding:1rem">No one is live right now.</div>';
         return;
       }
-      grid.innerHTML = live.slice(0, 6).map(c => {
-        const profile = JSON.parse(localStorage.getItem('lf_profile_' + c.id) || '{}');
-        return `
-          <a href="live.html?id=${c.id}" style="text-decoration:none;color:inherit">
+      grid.innerHTML = live.slice(0, 6).map(c => `
+          <a href="live.html?id=${encodeURIComponent(c.id)}" style="text-decoration:none;color:inherit">
             <div style="background:#141824;border:1px solid #2a2a35;border-radius:10px;padding:0.8rem;text-align:center">
               <div style="width:40px;height:40px;border-radius:50%;background:#0e121c;margin:0 auto 0.4rem;display:flex;align-items:center;justify-content:center;font-weight:700;color:#ff8e8e">
-                ${(profile.displayName || c.email || '?')[0].toUpperCase()}
+                ${esc((c.displayName || '?')[0].toUpperCase())}
               </div>
-              <div style="font-size:0.9rem;font-weight:600">${profile.displayName || c.email.split('@')[0]}</div>
+              <div style="font-size:0.9rem;font-weight:600">${esc(c.displayName)}</div>
               <div style="color:#ff6b6b;font-size:0.75rem;margin-top:0.2rem">● LIVE</div>
             </div>
           </a>
-        `;
-      }).join('');
+        `).join('');
     })();
   </script>
 </body>

@@ -15,18 +15,22 @@
     .creator-card h3 { margin: 0 0 0.3rem; font-size: 1.05rem; }
     .search-box { margin: 1rem 0; }
     .search-box input { max-width: 320px; }
+    .creator-card .banner { display: flex; align-items: center; justify-content: center; margin: 0; border-radius: 0; }
+    .avatar { width: 48px; height: 48px; border-radius: 50%; background: #0e121c; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.2rem; color: var(--accent-soft); }
+    .live-dot { color: #ff6b6b; font-size: 0.75rem; font-weight: 600; margin-left: 0.3rem; }
+    .card-actions { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
   </style>
 </head>
 <body>
   <header class="dash-header">
-    <div class="logo-row">
-      <img src="assets/logo.jpg" alt="Lonely Fans" class="logo-img">
+    <a href="index.html" class="logo-row">
+      <img src="assets/logo.jpg" alt="" class="logo-img">
       <div class="logo">Lonely Fans</div>
-    </div>
-    <div>
+    </a>
+    <nav class="header-nav">
       <a href="dashboard.html">Dashboard</a>
-      <button onclick="LonelyFansAuth.logout()" style="width:auto; margin-left:1rem;">Logout</button>
-    </div>
+      <button type="button" class="secondary" onclick="LonelyFansAuth.logout()">Logout</button>
+    </nav>
   </header>
   <main class="container wide">
     <h1>Browse Creators</h1>
@@ -37,48 +41,47 @@
   </main>
   <script src="auth.js"></script>
   <script>
-    const session = LonelyFansAuth.getSession();
-    if (!session) location.href = 'login.html';
-
-    const users = LonelyFansAuth.getUsers() || [];
-    const creators = users.filter(u => u.role === 'creator');
+    const session = LonelyFansAuth.requireSession();
+    const esc = LonelyFansAuth.escapeHtml;
     const grid = document.getElementById('grid');
+    let creators = [];
 
     function renderGrid() {
-      const q = document.getElementById('search').value.toLowerCase();
-      const filtered = creators.filter(c => {
-        const profile = LonelyFansAuth.getProfile(c.id) || {};
-        const name = (profile.displayName || c.email || '').toLowerCase();
-        return name.includes(q);
-      });
+      const q = document.getElementById('search').value.trim().toLowerCase();
+      const filtered = creators.filter(c => c.displayName.toLowerCase().includes(q) || c.bio.toLowerCase().includes(q));
 
       if (filtered.length === 0) {
-        grid.innerHTML = '<div class="empty-state">No creators match your search.<br><a href="register.html" class="btn" style="width:auto;margin-top:1rem">Become a Creator</a></div>';
+        grid.innerHTML = creators.length
+          ? '<div class="empty-state" style="grid-column:1/-1">No creators match your search.</div>'
+          : '<div class="empty-state" style="grid-column:1/-1">No creators yet.</div>';
         return;
       }
 
-      grid.innerHTML = filtered.map(c => {
-        const profile = LonelyFansAuth.getProfile(c.id) || {};
-        const live = LonelyFansAuth.isLive(c.id);
-        return `
+      grid.innerHTML = filtered.map(c => `
           <div class="creator-card">
-            <div class="banner" style="background:${profile.themeColor || '#ff6b6b'}; display:flex; align-items:center; justify-content:center;">
-              <div style="width:48px;height:48px;border-radius:50%;background:#0e121c;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.2rem;color:var(--accent-soft);">
-                ${(profile.displayName || c.email || '?')[0].toUpperCase()}
-              </div>
+            <div class="banner" style="background:${/^#[0-9a-f]{3,8}$/i.test(c.themeColor) ? c.themeColor : '#ff6b6b'}">
+              <div class="avatar">${esc((c.displayName || '?')[0].toUpperCase())}</div>
             </div>
             <div class="info">
-              <h3>${profile.displayName || c.email.split('@')[0]}</h3>
-              <p class="note">${(profile.bio || 'No bio').slice(0, 70)}${(profile.bio || '').length > 70 ? '…' : ''}</p>
-              ${live ? '<span style="color:#ff6b6b;font-size:0.8rem;font-weight:600">● LIVE</span>' : ''}
-              <p style="margin-top:0.6rem"><a href="creator.html?id=${c.id}" class="btn" style="width:auto;padding:0.5rem 1rem">View Page</a></p>
+              <h3>${esc(c.displayName)} ${c.isLive ? '<span class="live-dot">● LIVE</span>' : ''}</h3>
+              <p class="note">${esc(c.bio.slice(0, 70) || 'No bio')}${c.bio.length > 70 ? '…' : ''}</p>
+              <div class="card-actions">
+                <a href="creator.html?id=${encodeURIComponent(c.id)}" class="btn small">View Page</a>
+                ${c.isLive ? `<a href="live.html?id=${encodeURIComponent(c.id)}" class="btn small secondary">Watch</a>` : ''}
+              </div>
             </div>
           </div>
-        `;
-      }).join('');
+        `).join('');
     }
 
-    renderGrid();
+    if (session) {
+      grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1">Loading creators…</div>';
+      LonelyFansAuth.getCreators()
+        .then(list => { creators = list; renderGrid(); })
+        .catch(err => {
+          grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">Couldn't load creators: ${esc(err.message)}</div>`;
+        });
+    }
   </script>
 </body>
 </html>
