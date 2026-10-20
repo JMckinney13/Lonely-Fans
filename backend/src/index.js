@@ -38,6 +38,7 @@ class HttpError extends Error { constructor(status, msg) { super(msg); this.stat
 const h = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 const NOW = `(to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))`;
+const IN_30_DAYS = `(to_char((now() AT TIME ZONE 'UTC') + interval '30 days', 'YYYY-MM-DD HH24:MI:SS'))`;
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL,
@@ -91,6 +92,11 @@ const SCHEMA = `
     status TEXT NOT NULL DEFAULT 'completed', requested_at TEXT DEFAULT ${NOW}, completed_at TEXT
   );
   CREATE INDEX IF NOT EXISTS idx_payouts_creator ON payouts(creator_id, requested_at);
+  ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS expires_at TEXT;
+  ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS canceled_at TEXT;
+  UPDATE subscriptions SET expires_at = to_char(started_at::timestamp + interval '30 days', 'YYYY-MM-DD HH24:MI:SS')
+    WHERE expires_at IS NULL;
+  CREATE INDEX IF NOT EXISTS idx_subs_fan ON subscriptions(fan_id, creator_id);
   CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_chat_creator ON chat_messages(creator_id, created_at);
 `;
@@ -110,6 +116,8 @@ function requireCreator(req, res, next) {
   if (req.user.role !== 'creator') return res.status(403).json({ error: 'Creators only' });
   next();
 }
+// A subscription grants perks while active and not yet expired (monthly, 30 days)
+const ACTIVE_SUB = `active = 1 AND (expires_at IS NULL OR expires_at > ${NOW})`;
 const isPosInt = (n) => Number.isInteger(n) && n > 0;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -327,15 +335,70 @@ app.post('/api/subscribe', authMiddleware, h(async (req, res) => {
     await c.query(INSERT_TX, [uuid(), req.user.id, 'subscription', -tier.price, 'Subscribed to creator']);
     await c.query(INSERT_TX, [uuid(), creatorId, 'earning', tier.price, 'New subscriber']);
     await c.query('UPDATE subscriptions SET active = 0 WHERE fan_id = $1 AND creator_id = $2', [req.user.id, creatorId]);
-    await c.query('INSERT INTO subscriptions (id, fan_id, creator_id, tier_id, price, active) VALUES ($1, $2, $3, $4, $5, 1)',
+    await c.query(`INSERT INTO subscriptions (id, fan_id, creator_id, tier_id, price, active, expires_at) VALUES ($1, $2, $3, $4, $5, 1, ${IN_30_DAYS})`,
       [uuid(), req.user.id, creatorId, tierId, tier.price]);
   });
   res.json({ ok: true });
 }));
 
 app.get('/api/subscribed/:creatorId', authMiddleware, h(async (req, res) => {
-  const sub = await one('SELECT id FROM subscriptions WHERE fan_id = $1 AND creator_id = $2 AND active = 1', [req.user.id, req.params.creatorId]);
+  const sub = await one(`SELECT id FROM subscriptions WHERE fan_id = $1 AND creator_id = $2 AND ${ACTIVE_SUB}`, [req.user.id, req.params.creatorId]);
   res.json({ subscribed: !!sub });
+}));
+
+// My subscriptions: latest subscription per creator, with status
+const subOut = (r) => {
+  const expired = !r.active || (r.expires_at && r.expires_at <= r.now);
+  return {
+    id: r.id, creatorId: r.creator_id, creatorName: r.display_name || (r.email ? r.email.split('@')[0] : 'Creator'),
+    tierName: r.tier_name || 'Tier', price: r.price, startedAt: r.started_at, expiresAt: r.expires_at,
+    canceled: !!r.canceled_at, status: expired ? 'expired' : r.canceled_at ? 'canceled' : 'active'
+  };
+};
+const MY_SUBS_SQL = `
+  SELECT DISTINCT ON (s.creator_id) s.*, t.name AS tier_name, p.display_name, u.email, ${NOW} AS now
+  FROM subscriptions s
+  JOIN users u ON u.id = s.creator_id
+  LEFT JOIN tiers t ON t.id = s.tier_id
+  LEFT JOIN profiles p ON p.user_id = s.creator_id
+  WHERE s.fan_id = $1`;
+
+app.get('/api/subscriptions', authMiddleware, h(async (req, res) => {
+  const rows = await q(`${MY_SUBS_SQL} ORDER BY s.creator_id, s.started_at DESC, s.expires_at DESC NULLS LAST`, [req.user.id]);
+  const order = { active: 0, canceled: 1, expired: 2 };
+  res.json(rows.map(subOut).sort((a, b) => order[a.status] - order[b.status] || String(a.expiresAt).localeCompare(String(b.expiresAt))));
+}));
+
+// Renew: charges the subscription price again and extends it 30 days
+// (from expiry if still active, otherwise from now)
+app.post('/api/subscriptions/:id/renew', authMiddleware, h(async (req, res) => {
+  await tx(async (c) => {
+    const sub = await one('SELECT * FROM subscriptions WHERE id = $1 AND fan_id = $2 FOR UPDATE', [req.params.id, req.user.id], c);
+    if (!sub) throw new HttpError(404, 'Subscription not found');
+    const newer = await one('SELECT 1 FROM subscriptions WHERE fan_id = $1 AND creator_id = $2 AND started_at > $3', [req.user.id, sub.creator_id, sub.started_at], c);
+    if (newer) throw new HttpError(400, 'This subscription was replaced by a newer one');
+    if (!isPosInt(sub.price)) throw new HttpError(400, 'This subscription cannot be renewed');
+    const wallet = await one('SELECT balance FROM wallets WHERE user_id = $1 FOR UPDATE', [req.user.id], c);
+    if (!wallet || wallet.balance < sub.price) throw new HttpError(400, 'Not enough SparkCoins');
+    await c.query('UPDATE wallets SET balance = balance - $1 WHERE user_id = $2', [sub.price, req.user.id]);
+    await c.query('UPDATE wallets SET balance = balance + $1 WHERE user_id = $2', [sub.price, sub.creator_id]);
+    await c.query(INSERT_TX, [uuid(), req.user.id, 'subscription', -sub.price, 'Renewed subscription']);
+    await c.query(INSERT_TX, [uuid(), sub.creator_id, 'earning', sub.price, 'Subscription renewal']);
+    await c.query(`UPDATE subscriptions SET active = 1, canceled_at = NULL,
+        expires_at = to_char(GREATEST(COALESCE(expires_at, ${NOW})::timestamp, ${NOW}::timestamp) + interval '30 days', 'YYYY-MM-DD HH24:MI:SS')
+      WHERE id = $1`, [sub.id]);
+  });
+  const row = await one(`${MY_SUBS_SQL} AND s.id = $2`, [req.user.id, req.params.id]);
+  res.json(subOut(row));
+}));
+
+// Cancel: no more renewals, but perks stay until expires_at
+app.post('/api/subscriptions/:id/cancel', authMiddleware, h(async (req, res) => {
+  const sub = await one('SELECT * FROM subscriptions WHERE id = $1 AND fan_id = $2', [req.params.id, req.user.id]);
+  if (!sub) return res.status(404).json({ error: 'Subscription not found' });
+  await q(`UPDATE subscriptions SET canceled_at = COALESCE(canceled_at, ${NOW}) WHERE id = $1`, [sub.id]);
+  const row = await one(`${MY_SUBS_SQL} AND s.id = $2`, [req.user.id, req.params.id]);
+  res.json(subOut(row));
 }));
 
 // Goals
@@ -438,7 +501,7 @@ app.post('/api/settings', authMiddleware, requireCreator, h(async (req, res) => 
 
 // Badge check (simple: any active sub = badge)
 app.get('/api/badge/:creatorId', authMiddleware, h(async (req, res) => {
-  const sub = await one('SELECT 1 FROM subscriptions WHERE fan_id = $1 AND creator_id = $2 AND active = 1', [req.user.id, req.params.creatorId]);
+  const sub = await one(`SELECT 1 FROM subscriptions WHERE fan_id = $1 AND creator_id = $2 AND ${ACTIVE_SUB}`, [req.user.id, req.params.creatorId]);
   res.json({ hasBadge: !!sub });
 }));
 
@@ -549,7 +612,7 @@ app.post('/api/chat', authMiddleware, h(async (req, res) => {
   }
 
   // Check if subscriber
-  const isSub = await one('SELECT 1 FROM subscriptions WHERE fan_id = $1 AND creator_id = $2 AND active = 1', [req.user.id, creatorId]);
+  const isSub = await one(`SELECT 1 FROM subscriptions WHERE fan_id = $1 AND creator_id = $2 AND ${ACTIVE_SUB}`, [req.user.id, creatorId]);
 
   await q('INSERT INTO chat_messages (id, creator_id, username, text, is_sub, user_id) VALUES ($1, $2, $3, $4, $5, $6)', [uuid(), creatorId, username, text, isSub ? 1 : 0, req.user.id]);
   res.json({ ok: true });

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Subscriptions – Lonely Fans</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .sub-row { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.9rem 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    .sub-row .desc { flex: 1; min-width: 180px; }
+    .sub-row .meta { font-size: 0.8rem; color: var(--muted); margin-top: 0.2rem; }
+    .sub-actions { display: flex; gap: 0.4rem; }
+    .sub-actions button { width: auto; margin: 0; padding: 0.45rem 0.9rem; font-size: 0.85rem; }
+    .status { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin-left: 0.4rem; text-transform: uppercase; vertical-align: middle; }
+    .status.active { background: #065f46; color: #d1fae5; }
+    .status.canceled { background: #78350f; color: #fef3c7; }
+    .status.expired { background: #374151; color: #e5e7eb; }
+  </style>
+</head>
+<body>
+  <header class="dash-header">
+    <a href="index.html" class="logo-row">
+      <img src="assets/logo.jpg" alt="" class="logo-img">
+      <div class="logo">Lonely Fans</div>
+    </a>
+    <nav class="header-nav">
+      <a href="dashboard.html">Dashboard</a>
+      <a href="browse.html">Browse</a>
+      <button type="button" class="secondary" onclick="LonelyFansAuth.logout()">Logout</button>
+    </nav>
+  </header>
+  <main class="container">
+    <h1>My Subscriptions</h1>
+    <p class="note">Subscriptions last 30 days. Renew to pay again and add another 30 days. Canceling keeps your perks (like the SUB badge) until the end of the period; expired subscriptions lose them.</p>
+    <p id="status" class="message" role="status"></p>
+    <div id="subList" class="tx-list"><p class="note">Loading subscriptions…</p></div>
+  </main>
+  <script src="auth.js"></script>
+  <script>
+    const session = LonelyFansAuth.requireSession();
+    const esc = LonelyFansAuth.escapeHtml;
+    const $ = (id) => document.getElementById(id);
+    const fmt = (v) => { const d = LonelyFansAuth.parseServerDate(v); return d ? d.toLocaleDateString([], { dateStyle: 'medium' }) : '—'; };
+
+    function setStatus(text, ok) {
+      $('status').className = ok ? 'message success' : 'message';
+      $('status').textContent = text;
+    }
+
+    function row(s) {
+      const when = s.status === 'expired' ? `Expired ${fmt(s.expiresAt)}`
+        : s.status === 'canceled' ? `Canceled – perks until ${fmt(s.expiresAt)}`
+        : `Renews manually – active until ${fmt(s.expiresAt)}`;
+      return `
+        <div class="sub-row" data-sub="${esc(s.id)}">
+          <div class="desc">
+            <a href="creator.html?id=${encodeURIComponent(s.creatorId)}"><strong>${esc(s.creatorName)}</strong></a>
+            <span class="status ${esc(s.status)}">${esc(s.status)}</span>
+            <div class="meta">${esc(s.tierName)} · ${Number(s.price).toLocaleString()} SparkCoins / 30 days · since ${fmt(s.startedAt)}</div>
+            <div class="meta">${esc(when)}</div>
+          </div>
+          <div class="sub-actions">
+            <button type="button" data-action="renew" data-price="${Number(s.price)}">${s.status === 'expired' ? 'Resubscribe' : 'Renew'}</button>
+            ${s.status === 'active' ? '<button type="button" class="secondary" data-action="cancel">Cancel</button>' : ''}
+          </div>
+        </div>`;
+    }
+
+    async function load() {
+      try {
+        const subs = await LonelyFansAuth.api('/subscriptions');
+        $('subList').innerHTML = subs.length ? subs.map(row).join('')
+          : '<div class="empty-state">You have no subscriptions yet.<br><a href="browse.html" class="btn small">Browse creators</a></div>';
+      } catch (err) {
+        $('subList').innerHTML = `<p class="message">Couldn't load subscriptions: ${esc(err.message)}</p>`;
+      }
+    }
+
+    $('subList').addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      const id = btn.closest('[data-sub]').dataset.sub;
+      const action = btn.dataset.action;
+      if (action === 'renew' && !confirm(`Pay ${Number(btn.dataset.price).toLocaleString()} SparkCoins for another 30 days?`)) return;
+      if (action === 'cancel' && !confirm('Cancel? You keep your perks until the current period ends.')) return;
+      const label = btn.textContent;
+      btn.disabled = true; btn.textContent = '…';
+      try {
+        const s = await LonelyFansAuth.api(`/subscriptions/${encodeURIComponent(id)}/${action}`, { method: 'POST' });
+        setStatus(action === 'renew' ? `Renewed – active until ${fmt(s.expiresAt)}.` : `Canceled. Perks stay until ${fmt(s.expiresAt)}.`, true);
+        await load();
+      } catch (err) {
+        btn.disabled = false; btn.textContent = label;
+        setStatus(err.message, false);
+      }
+    });
+
+    if (session) load();
+  </script>
+</body>
+</html>
