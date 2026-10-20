@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Earnings – Lonely Fans</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=32520447">
   <style>
     .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.75rem; margin: 1rem 0; }
     .stat { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 0.9rem; }
@@ -50,7 +50,7 @@
     <h2>Recent Earnings</h2>
     <div id="earningList" class="tx-list"><p class="note">Loading…</p></div>
   </main>
-  <script src="auth.js"></script>
+  <script src="auth.js?v=3ad7d4a1"></script>
   <script>
     const session = LonelyFansAuth.requireSession({ role: 'creator' });
     const esc = LonelyFansAuth.escapeHtml;
