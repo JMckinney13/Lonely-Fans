@@ -45,8 +45,7 @@
         <div class="live-badge">LIVE</div>
         Simulated stream – creator is on camera
       </div>
-      <div style="margin-top:1rem" id="creatorControls">
-        ${isCreator ? ` ` : ''}
+      <div style="margin-top:1rem;display:none" id="creatorControls">
           <h3>Chat Commands</h3>
           <form onsubmit="addCommand(event)" style="display:flex;gap:0.4rem">
             <input id="cmdTrigger" placeholder="!hello" style="flex:1">
@@ -90,6 +89,7 @@
     if (!creatorId) { alert('No creator'); location.href = 'index.html'; }
 
     const isCreator = session && session.id === creatorId;
+    if (isCreator) document.getElementById('creatorControls').style.display = 'block';
 
     function renderTipFeed() {
       const tips = LonelyFansAuth.getRecentTips(creatorId);
