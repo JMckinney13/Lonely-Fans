@@ -19,10 +19,43 @@ async function api(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  } catch {
+    throw new Error('Could not reach the server. It may be waking up — please try again in a few seconds.');
+  }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Request failed');
+  if (res.status === 401 && token && path !== '/login') {
+    // Expired or invalid token: drop the stale session so pages redirect to login
+    clearSession();
+  }
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
   return data;
+}
+
+// Escape user-supplied text before inserting it into innerHTML
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+// SQLite timestamps are UTC without a zone ("YYYY-MM-DD HH:MM:SS")
+function parseServerDate(value) {
+  if (!value) return null;
+  const iso = /[zZ]|[+-]\d\d:?\d\d$/.test(value) ? value : value.replace(' ', 'T') + 'Z';
+  const d = new Date(iso);
+  return isNaN(d) ? null : d;
+}
+
+// Redirects and returns null when the visitor may not view the page
+function requireSession({ role, verified = true } = {}) {
+  const session = getSession();
+  if (!session || !getToken()) { location.replace('login.html'); return null; }
+  if (verified && !session.ageVerified) { location.replace('age-verify.html'); return null; }
+  if (role && session.role !== role) { location.replace('dashboard.html'); return null; }
+  return session;
 }
 
 function getSession() {
@@ -89,12 +122,17 @@ function saveTransactions(txs) {
   localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(txs));
 }
 
-function markAgeVerified(userId) {
+async function markAgeVerified(userId) {
+  await api('/age-verify', { method: 'POST' });
   const session = getSession();
   if (session && session.id === userId) {
     session.ageVerified = true;
     setSession(session);
   }
+}
+
+async function getCreators() {
+  return api('/creators');
 }
 
 async function getProfile(userId) {
@@ -127,8 +165,12 @@ async function getBalance(userId) {
   }
 }
 
-function getUserTransactions(userId) {
-  return getTransactions().filter(tx => tx.userId === userId);
+async function getUserTransactions(userId) {
+  try {
+    return await api('/transactions');
+  } catch {
+    return getTransactions().filter(tx => tx.userId === userId);
+  }
 }
 
 function addTransaction(userId, type, amount, description) {
@@ -168,22 +210,13 @@ function isFollowing(fanId, creatorId) {
   return (follows[fanId] || []).includes(creatorId);
 }
 
-// Daily streak
-function claimDailyStreak(userId) {
-  const key = 'lf_streak_' + userId;
-  const today = new Date().toDateString();
-  const last = localStorage.getItem(key);
-  if (last === today) return { claimed: false, streak: parseInt(localStorage.getItem(key + '_count') || '0', 10) };
-  const streak = (last ? parseInt(localStorage.getItem(key + '_count') || '0', 10) : 0) + 1;
-  localStorage.setItem(key, today);
-  localStorage.setItem(key + '_count', streak);
-  addTransaction(userId, 'streak', 10, 'Daily login streak');
-  return { claimed: true, streak };
-}
-
-// Tip feed
-function getRecentTips(creatorId) {
-  return getTransactions().filter(tx => tx.type === 'tip' && tx.description.includes(creatorId)).slice(0, 5);
+// Daily streak (server-side, credits the real wallet)
+async function claimDailyStreak(userId) {
+  try {
+    return await api('/streak/claim', { method: 'POST' });
+  } catch {
+    return { claimed: false, streak: 0 };
+  }
 }
 
 async function buyCoins(amount, price) {
@@ -250,7 +283,6 @@ function getMySubscriptions(fanId) {
 
 const GOALS_KEY = 'lonelyfans_goals';
 const CHAT_KEY = 'lonelyfans_chat';
-const LIVE_KEY = 'lonelyfans_live';
 
 function getGoals() {
   return JSON.parse(localStorage.getItem(GOALS_KEY) || '{}');
@@ -263,17 +295,6 @@ function getChat() {
 }
 function saveChat(chat) {
   localStorage.setItem(CHAT_KEY, JSON.stringify(chat));
-}
-function getLiveStatus() {
-  return JSON.parse(localStorage.getItem(LIVE_KEY) || '{}');
-}
-function setLive(creatorId, isLive) {
-  const live = getLiveStatus();
-  live[creatorId] = isLive;
-  localStorage.setItem(LIVE_KEY, JSON.stringify(live));
-}
-function isLive(creatorId) {
-  return !!getLiveStatus()[creatorId];
 }
 
 async function getCreatorGoal(creatorId) {
@@ -304,8 +325,8 @@ async function getChatMessages(creatorId) {
   }
 }
 
-async function setLive(creatorId, isLive) {
-  await api('/live', { method: 'POST', body: JSON.stringify({ isLive }) });
+async function setLive(creatorId, isLive, { keepalive = false } = {}) {
+  await api('/live', { method: 'POST', body: JSON.stringify({ isLive }), keepalive });
 }
 
 async function isLive(creatorId) {
@@ -326,8 +347,8 @@ function savePayouts(payouts) {
   localStorage.setItem(PAYOUTS_KEY, JSON.stringify(payouts));
 }
 
-function getCreatorEarnings(creatorId) {
-  const txs = getUserTransactions(creatorId);
+async function getCreatorEarnings(creatorId) {
+  const txs = await getUserTransactions(creatorId);
   const earned = txs.filter(t => t.type === 'earning').reduce((sum, t) => sum + t.amount, 0);
   const paidOut = getPayouts()
     .filter(p => p.creatorId === creatorId && p.status === 'completed')
@@ -335,9 +356,9 @@ function getCreatorEarnings(creatorId) {
   return Math.max(0, earned - paidOut);
 }
 
-function requestPayout(creatorId, amount) {
-  const available = getCreatorEarnings(creatorId);
-  if (amount > available || amount < 50) {
+async function requestPayout(creatorId, amount) {
+  const available = await getCreatorEarnings(creatorId);
+  if (!Number.isInteger(amount) || amount > available || amount < 50) {
     throw new Error('Minimum payout is 50 SparkCoins and cannot exceed available balance.');
   }
   const payouts = getPayouts();
@@ -403,7 +424,8 @@ window.LonelyFansAuth = {
   getCreatorTiers, saveCreatorTiers, subscribe, isSubscribed,
   setCreatorGoal, getCreatorGoal, tipGoal,
   addChatMessage, getChatMessages, setLive, isLive, getUsers,
-  toggleFollow, isFollowing, claimDailyStreak, getRecentTips,
+  toggleFollow, isFollowing, claimDailyStreak, getCreators,
+  escapeHtml, parseServerDate, requireSession,
   getCreatorEarnings, requestPayout, getCreatorPayouts,
   submitReport, hasAttested, submitAttestation,
   API_BASE, api
