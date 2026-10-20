@@ -14,7 +14,35 @@
     }
     .empty { color: var(--muted); text-align: center; padding: 1.5rem; font-size: 0.9rem; }
     .video-area { background: #000; border-radius: 12px; aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; color: #666; position: relative; }
-    .video-area .live-badge { position: absolute; top: 12px; left: 12px; background: #ff6b6b; color: white; padding: 4px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: 700; }
+    .video-area { overflow: hidden; }
+    .video-area video, .video-area canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .video-area video.mirror { transform: scaleX(-1); }
+    .video-area [hidden] { display: none !important; }
+    .ov { position: absolute; z-index: 2; display: flex; gap: 0.4rem; align-items: center; pointer-events: none; }
+    .ov-top { top: 12px; left: 12px; right: 12px; }
+    .ov-bottom { left: 12px; right: 12px; bottom: 12px; flex-direction: column; align-items: stretch; gap: 0.35rem; }
+    .pill { background: rgba(0,0,0,0.55); color: #fff; padding: 4px 10px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; backdrop-filter: blur(4px); white-space: nowrap; }
+    .video-area .live-badge { position: static; background: #ff3b5c; color: white; padding: 4px 10px; border-radius: 999px; font-size: 0.78rem; font-weight: 800; letter-spacing: 0.04em; }
+    .video-area .live-badge::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #fff; margin-right: 6px; vertical-align: 1px; animation: blink 1.4s infinite; }
+    @keyframes blink { 50% { opacity: 0.3; } }
+    .ov-spacer { flex: 1; }
+    .ov-name { font-weight: 700; font-size: 1rem; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,0.8); }
+    .ov-goal { background: rgba(0,0,0,0.55); border-radius: 8px; padding: 0.35rem 0.6rem; font-size: 0.75rem; color: #fff; max-width: 340px; }
+    .ov-goal .progress-bar { height: 5px; margin: 0.25rem 0 0; }
+    .preview-note { background: rgba(255,255,255,0.15); color: #fff; font-size: 0.7rem; padding: 3px 8px; border-radius: 6px; }
+    .cam-off-cover { position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center; background: #111; color: #aaa; font-size: 0.95rem; }
+    .stage-panel { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 1rem; background: rgba(5,7,12,0.82); color: #ddd; gap: 0.5rem; }
+    .stage-panel h3 { margin: 0; color: #fff; font-size: 1.1rem; }
+    .stage-panel p { margin: 0; max-width: 420px; font-size: 0.9rem; }
+    .stage-panel button { width: auto; margin-top: 0.4rem; padding: 0.65rem 1.4rem; }
+    .stage-panel .go-live-btn { background: #ff3b5c; font-weight: 700; }
+    .cam-controls { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.7rem; }
+    .cam-controls[hidden] { display: none; }
+    .cam-controls select { width: auto; min-width: 0; flex: 1 1 160px; padding: 0.5rem; margin: 0; }
+    .cam-controls button { width: auto; margin: 0; padding: 0.55rem 0.9rem; font-size: 0.85rem; }
+    .cam-controls button[aria-pressed="true"] { background: #7f1d1d; }
+    .cam-controls .end-btn { background: #b91c1c; font-weight: 700; }
+    @media (max-width: 800px) { .ov-goal { max-width: none; } .pill { font-size: 0.72rem; padding: 3px 8px; } }
     .side-panel { background: var(--card); border-radius: 12px; padding: 1rem; display: flex; flex-direction: column; height: 70vh; }
     .goal-box { background: #1a1a22; border: 1px solid #333; border-radius: 10px; padding: 0.8rem; margin-bottom: 1rem; }
     .progress-bar { height: 8px; background: #333; border-radius: 4px; overflow: hidden; margin: 0.5rem 0; }
@@ -94,8 +122,29 @@
   <div class="live-layout">
     <div>
       <div class="video-area" id="videoArea">
-        <div class="live-badge" id="liveBadge" hidden>LIVE</div>
-        <span id="videoText">Loading stream…</span>
+        <video id="selfView" class="mirror" playsinline autoplay muted hidden></video>
+        <canvas id="stagedFeed" hidden aria-label="Preview feed animation"></canvas>
+        <div id="camOffCover" class="cam-off-cover" hidden>📷 Camera is off</div>
+        <div class="ov ov-top" id="ovTop" hidden>
+          <div class="live-badge" id="liveBadge">LIVE</div>
+          <span class="pill" id="ovViewers" title="Viewers">👁 0</span>
+          <span class="pill" id="ovTimer" title="Time live">00:00</span>
+          <span class="ov-spacer"></span>
+          <span class="preview-note" id="previewNote" hidden title="Real video broadcasting isn't enabled yet">Preview feed</span>
+          <span class="pill" id="ovMuted" hidden>🔇 Muted</span>
+        </div>
+        <div class="ov ov-bottom" id="ovBottom" hidden>
+          <div class="ov-name" id="ovName"></div>
+          <div class="ov-goal" id="ovGoal" hidden></div>
+        </div>
+        <div class="stage-panel" id="stagePanel"><p id="videoText">Loading stream…</p></div>
+      </div>
+      <div id="camControls" class="cam-controls" hidden>
+        <select id="camSelect" aria-label="Camera"></select>
+        <select id="micSelect" aria-label="Microphone"></select>
+        <button type="button" class="secondary" id="muteBtn" aria-pressed="false">🎙 Mute</button>
+        <button type="button" class="secondary" id="camBtn" aria-pressed="false">📷 Camera off</button>
+        <button type="button" class="end-btn" id="endBtn">End Stream</button>
       </div>
       <h2 id="streamTitle" class="stream-title"></h2>
       <div id="creatorControls" class="creator-controls" hidden>
@@ -146,6 +195,7 @@
     </div>
   </div>
 
+  <script src="live-stage.js?v=0eed3f39"></script>
   <script src="auth.js?v=188585ce"></script>
   <script>
     const params = new URLSearchParams(location.search);
@@ -170,23 +220,190 @@
       setTimeout(() => { if (el.textContent === text) el.textContent = ''; }, 3000);
     }
 
+    // ---------- Video stage ----------
+    const cam = isCreator && window.LiveStage ? new LiveStage.CreatorCam($('selfView')) : null;
+    let creatorName = 'Creator';
+    let liveStartedAt = null;
+    let staged = null;
+    let heartbeatTimer = null;
+    let infoTimer = null;
+    let tickTimer = null;
+
+    function panel(html) {
+      $('stagePanel').innerHTML = html;
+      $('stagePanel').hidden = !html;
+    }
+    function showOverlays(on) {
+      $('ovTop').hidden = !on;
+      $('ovBottom').hidden = !on;
+    }
+    function tick() {
+      $('ovTimer').textContent = liveStartedAt ? LiveStage.formatElapsed(Date.now() - liveStartedAt) : '00:00';
+    }
+    function updateGoalOverlay(goal) {
+      const el = $('ovGoal');
+      if (!goal) { el.hidden = true; return; }
+      const pct = goal.target ? Math.min(100, (goal.current / goal.target) * 100) : 0;
+      el.innerHTML = `🎯 ${esc(goal.text)} · ${Number(goal.current).toLocaleString()} / ${Number(goal.target).toLocaleString()}
+        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>`;
+      el.hidden = false;
+    }
+    function applyLiveInfo(info) {
+      $('ovViewers').textContent = `👁 ${Number(info.viewers || 0).toLocaleString()}`;
+      if (info.startedAt) liveStartedAt = new Date(info.startedAt).getTime();
+    }
+    async function pollLiveInfo() {
+      try {
+        if (isCreator) applyLiveInfo(await LonelyFansAuth.getLiveInfo(creatorId));
+        else {
+          const info = await LonelyFansAuth.api(`/live/${encodeURIComponent(creatorId)}/view`, { method: 'POST', body: JSON.stringify({ viewerKey: viewerKey() }) });
+          if (!info.isLive) return showViewerOffline();
+          if (!staged) showViewerLive();
+          applyLiveInfo(info);
+        }
+      } catch {}
+    }
+    function viewerKey() {
+      let k = localStorage.getItem('lf_viewer_key');
+      if (!k || !/^[A-Za-z0-9-]{8,64}$/.test(k)) {
+        k = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+        localStorage.setItem('lf_viewer_key', k);
+      }
+      return k;
+    }
+
+    // Viewer side: staged feed while the creator is live
+    function showViewerLive() {
+      $('stagedFeed').hidden = false;
+      if (!staged) staged = LiveStage.startStagedFeed($('stagedFeed'), creatorId);
+      $('previewNote').hidden = false;
+      showOverlays(true);
+      panel('');
+    }
+    function showViewerOffline() {
+      if (staged) { staged.stop(); staged = null; }
+      $('stagedFeed').hidden = true;
+      showOverlays(false);
+      liveStartedAt = null;
+      panel(`<h3>${esc(creatorName)} is offline right now</h3><p>Chat stays open — say hi, and follow to see when they go live.</p>`);
+    }
+
+    // Creator side: Go Live flow
+    function showGoLivePanel() {
+      const problem = LiveStage.cameraSupportProblem();
+      if (problem) return showCamError(problem);
+      panel(`<h3>Ready to go live?</h3><p>We'll ask to use your camera and microphone. Your preview is mirrored, like a selfie.</p>
+        <button type="button" class="go-live-btn" id="goLiveBtn">🔴 Go Live</button>`);
+      $('goLiveBtn').onclick = () => startStream();
+    }
+    function showCamError(kind) {
+      const e = LiveStage.CAM_ERRORS[kind] || LiveStage.CAM_ERRORS.other;
+      panel(`<h3>${esc(e.title)}</h3><p>${esc(e.text)}</p><button type="button" id="camRetry">Try again</button>`);
+      $('stagePanel').dataset.state = kind;
+      $('camRetry').onclick = () => startStream();
+    }
+    async function fillDevicePickers() {
+      try {
+        const { cams, mics } = await cam.devices();
+        const opts = (list, cur, label) => list.map((d, i) =>
+          `<option value="${esc(d.deviceId)}" ${d.deviceId === cur ? 'selected' : ''}>${esc(d.label || `${label} ${i + 1}`)}</option>`).join('');
+        $('camSelect').innerHTML = opts(cams, cam.camId, 'Camera') || '<option value="">No camera</option>';
+        $('micSelect').innerHTML = opts(mics, cam.micId, 'Microphone') || '<option value="">No microphone</option>';
+        $('micSelect').disabled = !mics.length;
+      } catch {}
+    }
+    function syncToggles() {
+      $('muteBtn').setAttribute('aria-pressed', String(cam.muted));
+      $('muteBtn').textContent = cam.muted ? '🔇 Unmute' : '🎙 Mute';
+      $('muteBtn').disabled = !cam.hasMic;
+      $('camBtn').setAttribute('aria-pressed', String(cam.cameraOff));
+      $('camBtn').textContent = cam.cameraOff ? '📷 Camera on' : '📷 Camera off';
+      $('ovMuted').hidden = !cam.muted;
+      $('camOffCover').hidden = !cam.cameraOff;
+    }
+    async function startStream(opts) {
+      const problem = LiveStage.cameraSupportProblem();
+      if (problem) return showCamError(problem);
+      panel('<p>Starting camera… allow access if your browser asks.</p>');
+      try {
+        await cam.start(opts);
+      } catch (err) {
+        return showCamError(LiveStage.classifyError(err));
+      }
+      delete $('stagePanel').dataset.state;
+      $('selfView').hidden = false;
+      panel('');
+      $('camControls').hidden = false;
+      showOverlays(true);
+      syncToggles();
+      fillDevicePickers();
+      try {
+        await LonelyFansAuth.setLive(creatorId, true);
+        liveStartedAt = liveStartedAt || Date.now();
+      } catch (err) {
+        showError('controlStatus', `Camera is on, but going live failed: ${err.message}`);
+      }
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = setInterval(() => LonelyFansAuth.sendLiveHeartbeat().catch(() => {}), 30000);
+      clearInterval(tickTimer); tickTimer = setInterval(tick, 1000); tick();
+      clearInterval(infoTimer); infoTimer = setInterval(pollLiveInfo, 10000); pollLiveInfo();
+    }
+    async function endStream({ keepalive = false } = {}) {
+      clearInterval(heartbeatTimer); clearInterval(infoTimer); clearInterval(tickTimer);
+      heartbeatTimer = infoTimer = tickTimer = null;
+      const wasLive = cam && cam.active;
+      if (cam) cam.stop();
+      $('selfView').hidden = true;
+      $('camOffCover').hidden = true;
+      $('camControls').hidden = true;
+      showOverlays(false);
+      liveStartedAt = null;
+      if (wasLive || keepalive) await LonelyFansAuth.setLive(creatorId, false, { keepalive }).catch(() => {});
+      if (!keepalive) showGoLivePanel();
+    }
+    function initCamControls() {
+      $('muteBtn').onclick = () => { cam.setMuted(!cam.muted); syncToggles(); };
+      $('camBtn').onclick = () => { cam.setCameraOff(!cam.cameraOff); syncToggles(); };
+      $('endBtn').onclick = async () => {
+        $('endBtn').disabled = true;
+        await endStream();
+        $('endBtn').disabled = false;
+        showOk('controlStatus', 'Stream ended. You are offline.');
+      };
+      $('camSelect').onchange = () => startStream({ camId: $('camSelect').value });
+      $('micSelect').onchange = () => startStream({ micId: $('micSelect').value });
+      if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+        navigator.mediaDevices.addEventListener('devicechange', () => { if (cam.active) fillDevicePickers(); });
+      }
+      // Leaving the page stops the camera and goes offline
+      window.addEventListener('pagehide', () => endStream({ keepalive: true }));
+    }
+
     async function loadHeader() {
       const [profile, live] = await Promise.all([
         LonelyFansAuth.getProfile(creatorId).catch(() => null),
         LonelyFansAuth.isLive(creatorId)
       ]);
-      const name = (profile && profile.displayName) || 'Creator';
-      $('streamTitle').innerHTML = `${esc(name)} <a href="creator.html?id=${encodeURIComponent(creatorId)}" class="small-link">View page →</a>`;
-      document.title = name + ' – Live – Lonely Fans';
-      const on = isCreator || live;
-      $('liveBadge').hidden = !on;
-      $('videoText').textContent = on ? 'Simulated stream – creator is on camera' : `${name} is offline right now`;
+      creatorName = (profile && profile.displayName) || 'Creator';
+      $('streamTitle').innerHTML = `${esc(creatorName)} <a href="creator.html?id=${encodeURIComponent(creatorId)}" class="small-link">View page →</a>`;
+      $('ovName').textContent = creatorName;
+      document.title = creatorName + ' – Live – Lonely Fans';
+      if (isCreator) {
+        if (!cam) return panel('<h3>Live video unavailable</h3><p>Reload the page to try again.</p>');
+        initCamControls();
+        showGoLivePanel();
+      } else {
+        if (live) { showViewerLive(); pollLiveInfo(); } else showViewerOffline();
+        clearInterval(tickTimer); tickTimer = setInterval(tick, 1000);
+        setInterval(pollLiveInfo, 20000);
+      }
     }
 
     async function renderGoal() {
       // Don't wipe the form while the creator is typing a new goal
       if (editingGoal || (document.activeElement && $('goalBox').contains(document.activeElement))) return;
       const goal = await LonelyFansAuth.getCreatorGoal(creatorId);
+      updateGoalOverlay(goal);
       const box = $('goalBox');
       if (!goal) {
         box.innerHTML = isCreator ? goalForm() : '<div class="empty">No active goal</div>';
@@ -465,12 +682,7 @@
         if (b) unban(b);
       });
       loadModList();
-      LonelyFansAuth.setLive(creatorId, true).catch(() => {});
-      setInterval(() => LonelyFansAuth.sendLiveHeartbeat().catch(() => {}), 30000);
-      // Go offline when the creator leaves the page
-      window.addEventListener('pagehide', () => {
-        LonelyFansAuth.setLive(creatorId, false, { keepalive: true }).catch(() => {});
-      });
+      // Going live now happens when the camera starts (see startStream)
     }
 
     $('emojiToggle').addEventListener('click', () => { $('emojiPicker').hidden = !$('emojiPicker').hidden; });
