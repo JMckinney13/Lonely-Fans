@@ -102,6 +102,7 @@ const SCHEMA = `
     amount INTEGER NOT NULL, source TEXT NOT NULL, created_at TEXT DEFAULT ${NOW}
   );
   CREATE INDEX IF NOT EXISTS idx_tips_creator ON tips(creator_id, fan_id);
+  ALTER TABLE profiles ADD COLUMN IF NOT EXISTS next_live_at TEXT;
   CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_chat_creator ON chat_messages(creator_id, created_at);
 `;
@@ -131,8 +132,13 @@ app.get('/api/health', (req, res) => res.json({ ok: true }));
 const INSERT_TX = 'INSERT INTO transactions (id, user_id, type, amount, description) VALUES ($1, $2, $3, $4, $5)';
 const profileOut = (p) => ({
   displayName: p.display_name, bio: p.bio, bannerUrl: p.banner_url,
-  themeColor: p.theme_color, accentColor: p.accent_color, layout: p.layout
+  themeColor: p.theme_color, accentColor: p.accent_color, layout: p.layout,
+  nextLiveAt: upcoming(p.next_live_at)
 });
+// Scheduled "Going live at…" time, only while it's still in the future
+function upcoming(iso) {
+  return iso && new Date(iso) > new Date() ? iso : null;
+}
 
 app.post('/api/register', h(async (req, res) => {
   const { email, password, role } = req.body;
@@ -186,7 +192,7 @@ app.post('/api/age-verify', authMiddleware, h(async (req, res) => {
 // Public creator directory (browse + "Live Now")
 app.get('/api/creators', h(async (req, res) => {
   const rows = await q(`
-    SELECT u.id, u.email, p.display_name, p.bio, p.theme_color, COALESCE(l.is_live, 0) AS is_live
+    SELECT u.id, u.email, p.display_name, p.bio, p.theme_color, p.next_live_at, COALESCE(l.is_live, 0) AS is_live
     FROM users u
     LEFT JOIN profiles p ON p.user_id = u.id
     LEFT JOIN live_status l ON l.creator_id = u.id
@@ -199,7 +205,8 @@ app.get('/api/creators', h(async (req, res) => {
     displayName: r.display_name || r.email.split('@')[0],
     bio: r.bio || '',
     themeColor: r.theme_color || '#ff6b6b',
-    isLive: !!r.is_live
+    isLive: !!r.is_live,
+    nextLiveAt: upcoming(r.next_live_at)
   })));
 }));
 
@@ -289,12 +296,27 @@ app.get('/api/profile', authMiddleware, h(async (req, res) => {
 
 app.put('/api/profile', authMiddleware, h(async (req, res) => {
   const { displayName, bio, bannerUrl, themeColor, accentColor, layout } = req.body;
+  // nextLiveAt is optional: omitted = keep, null/'' = clear, otherwise a future date within a year
+  let nextLiveAt;
+  if (Object.prototype.hasOwnProperty.call(req.body, 'nextLiveAt')) {
+    const v = req.body.nextLiveAt;
+    if (v === null || v === '') nextLiveAt = null;
+    else {
+      if (req.user.role !== 'creator') return res.status(403).json({ error: 'Creators only' });
+      const d = new Date(typeof v === 'string' ? v : NaN);
+      if (isNaN(d)) return res.status(400).json({ error: 'Invalid go-live date' });
+      if (d <= new Date()) return res.status(400).json({ error: 'Go-live time must be in the future' });
+      if (d - Date.now() > 366 * 86400000) return res.status(400).json({ error: 'Go-live time must be within a year' });
+      nextLiveAt = d.toISOString();
+    }
+  }
   await q(`INSERT INTO profiles (user_id, display_name, bio, banner_url, theme_color, accent_color, layout)
            VALUES ($1, $2, $3, $4, $5, $6, $7)
            ON CONFLICT (user_id) DO UPDATE SET display_name = EXCLUDED.display_name, bio = EXCLUDED.bio,
              banner_url = EXCLUDED.banner_url, theme_color = EXCLUDED.theme_color,
              accent_color = EXCLUDED.accent_color, layout = EXCLUDED.layout`,
     [req.user.id, displayName, bio, bannerUrl, themeColor, accentColor, layout]);
+  if (nextLiveAt !== undefined) await q('UPDATE profiles SET next_live_at = $2 WHERE user_id = $1', [req.user.id, nextLiveAt]);
   res.json({ ok: true });
 }));
 

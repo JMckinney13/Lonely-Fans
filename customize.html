@@ -45,6 +45,13 @@
           <option value="bold">Bold</option>
         </select>
 
+        <label for="nextLiveAt">Going live at… (optional)</label>
+        <div style="display:flex;gap:0.4rem;align-items:center">
+          <input type="datetime-local" id="nextLiveAt" style="flex:1">
+          <button type="button" class="secondary" id="clearLive" style="width:auto;margin:0">Clear</button>
+        </div>
+        <p class="note" style="margin-top:0.3rem">Shown on your page and browse card until that time (your local time zone).</p>
+
         <button type="submit" id="saveBtn" disabled>Loading…</button>
         <p id="saveStatus" class="message" role="status"></p>
       </form>
@@ -91,6 +98,15 @@
       `;
     }
 
+    // datetime-local <-> ISO (UTC)
+    function toLocalInput(iso) {
+      const d = iso ? new Date(iso) : null;
+      if (!d || isNaN(d)) return '';
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+    document.getElementById('clearLive').addEventListener('click', () => { document.getElementById('nextLiveAt').value = ''; });
+
     if (session) {
       FIELDS.forEach(id => document.getElementById(id).addEventListener('input', renderPreview));
       document.getElementById('publicLink').href = 'creator.html?id=' + encodeURIComponent(session.id);
@@ -105,6 +121,7 @@
         document.getElementById('themeColor').value = profile.themeColor || '#ff4d8d';
         document.getElementById('accentColor').value = profile.accentColor || '#ff8ab3';
         document.getElementById('layout').value = profile.layout || 'classic';
+        document.getElementById('nextLiveAt').value = toLocalInput(profile.nextLiveAt);
         renderPreview();
         btn.disabled = false;
         btn.textContent = 'Save Changes';
@@ -116,6 +133,14 @@
         const btn = document.getElementById('saveBtn');
         const data = readForm();
         if (!data.displayName) { status.className = 'message'; status.textContent = 'Display name is required.'; return; }
+        const liveVal = document.getElementById('nextLiveAt').value;
+        if (liveVal) {
+          const d = new Date(liveVal);
+          if (isNaN(d) || d <= new Date()) { status.className = 'message'; status.textContent = 'Pick a go-live time in the future.'; return; }
+          data.nextLiveAt = d.toISOString();
+        } else {
+          data.nextLiveAt = null;
+        }
         btn.disabled = true;
         btn.textContent = 'Saving…';
         try {

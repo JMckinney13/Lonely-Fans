@@ -315,3 +315,6 @@ button.secondary:disabled, .pack:disabled, .pack:disabled:hover { background: tr
 .live-dot { color: #ff6b6b; font-size: 0.75rem; font-weight: 600; margin-left: 0.3rem; vertical-align: middle; }
 .card-actions { display: flex; gap: 0.5rem; margin: 0.8rem 0; flex-wrap: wrap; }
 .card-actions .btn, .card-actions button { width: auto; margin-top: 0; }
+
+/* Scheduled "Going live at…" */
+.go-live { color: var(--accent-soft, #ff8e8e); font-size: 0.85rem; font-weight: 600; margin: 0.3rem 0; }

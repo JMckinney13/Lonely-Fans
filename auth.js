@@ -134,6 +134,13 @@ async function markAgeVerified(userId) {
   }
 }
 
+// "Going live at…" label, e.g. "Sat, Oct 24, 8:00 PM"
+function formatGoLive(iso) {
+  const d = iso ? new Date(iso) : null;
+  if (!d || isNaN(d) || d <= new Date()) return '';
+  return d.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
 async function getCreators() {
   return api('/creators');
 }
@@ -417,7 +424,7 @@ window.LonelyFansAuth = {
   setCreatorGoal, getCreatorGoal, tipGoal,
   addChatMessage, getChatMessages, setLive, isLive, getUsers,
   toggleFollow, isFollowing, getMyFollows, claimDailyStreak, getCreators,
-  escapeHtml, parseServerDate, requireSession,
+  escapeHtml, parseServerDate, formatGoLive, requireSession,
   getEarnings, getCreatorEarnings, requestPayout, getCreatorPayouts,
   submitReport, hasAttested, submitAttestation,
   API_BASE, api

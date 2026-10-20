@@ -92,6 +92,7 @@
               <h3>${esc(c.displayName)} ${c.isLive ? '<span class="live-dot">● LIVE</span>' : ''}</h3>
               ${followIds.has(c.id) ? '<div class="following-tag">✓ Following</div>' : ''}
               <p class="note">${esc(c.bio.slice(0, 70) || 'No bio')}${c.bio.length > 70 ? '…' : ''}</p>
+              ${!c.isLive && LonelyFansAuth.formatGoLive(c.nextLiveAt) ? `<div class="go-live">📅 Live ${esc(LonelyFansAuth.formatGoLive(c.nextLiveAt))}</div>` : ''}
               <div class="card-actions">
                 <a href="creator.html?id=${encodeURIComponent(c.id)}" class="btn small">View Page</a>
                 ${c.isLive ? `<a href="live.html?id=${encodeURIComponent(c.id)}" class="btn small secondary">Watch</a>` : ''}
