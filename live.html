@@ -53,6 +53,15 @@
     .msg-time { color: var(--muted); font-size: 0.7rem; margin-left: 0.4rem; }
     .chat-error { margin: 0 0 0.4rem; font-size: 0.85rem; min-height: 0; }
     .chat-error:empty { display: none; }
+    .mod-btns { display: inline-flex; gap: 0.25rem; margin-left: 0.3rem; vertical-align: middle; }
+    .mod-btns button { width: auto; margin: 0; padding: 1px 6px; font-size: 0.68rem; border-radius: 4px; background: #2a3142; }
+    .mod-btns button.ban { background: #7f1d1d; }
+    .mod-btns button:disabled { opacity: 0.5; }
+    .mod-list { list-style: none; padding: 0; margin: 0.4rem 0 0; font-size: 0.85rem; }
+    .mod-list li { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.3rem 0; border-bottom: 1px solid var(--border); }
+    .mod-list li button { width: auto; margin: 0; padding: 0.25rem 0.6rem; font-size: 0.8rem; }
+    .mod-notice { background: #3b1d1d; color: #fecaca; border-radius: 8px; padding: 0.5rem 0.7rem; font-size: 0.85rem; margin: 0 0 0.4rem; }
+    .mod-notice[hidden] { display: none; }
   </style>
 </head>
 <body>
@@ -88,12 +97,15 @@
           <button type="submit">Add</button>
         </form>
         <label class="check-label"><input type="checkbox" id="slowMode"> Slow mode (5s between messages)</label>
+        <h3>Banned &amp; Timed-out Users</h3>
+        <ul id="modList" class="mod-list"><li class="note">Loading…</li></ul>
         <p id="controlStatus" class="message" role="status"></p>
       </div>
     </div>
     <div class="side-panel">
       <div class="goal-box" id="goalBox"><div class="empty">Loading goal…</div></div>
       <div class="chat-messages" id="chat" aria-live="polite"><div class="empty">Connecting to chat…</div></div>
+      <p id="modNotice" class="mod-notice" role="alert" hidden></p>
       <p id="chatError" class="message chat-error" role="alert"></p>
       <form class="chat-input" id="chatForm">
         <button type="button" class="emoji-btn" id="emojiToggle" aria-label="Insert emoji">😊</button>
@@ -238,9 +250,76 @@
         const badge = m.is_sub ? '<span class="badge">SUB</span>' : '';
         const d = LonelyFansAuth.parseServerDate(m.created_at);
         const time = d ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-        return `<div class="msg ${m.username === 'Bot' ? 'bot' : ''}">${badge}<strong>${esc(m.username)}:</strong> ${replaceEmotes(esc(m.text))} <span class="msg-time">${time}</span></div>`;
+        const canMod = isCreator && m.user_id && m.user_id !== session.id && m.username !== 'Bot';
+        const mod = canMod ? `<span class="mod-btns"><button type="button" data-mod="timeout" data-user="${esc(m.user_id)}" data-name="${esc(m.username)}" title="Timeout 5 minutes">Timeout</button><button type="button" class="ban" data-mod="ban" data-user="${esc(m.user_id)}" data-name="${esc(m.username)}" title="Ban from chat">Ban</button></span>` : '';
+        return `<div class="msg ${m.username === 'Bot' ? 'bot' : ''}">${badge}<strong>${esc(m.username)}:</strong> ${replaceEmotes(esc(m.text))} <span class="msg-time">${time}</span>${mod}</div>`;
       }).join('');
       if (atBottom) el.scrollTop = el.scrollHeight;
+    }
+
+    // Creator moderation: Timeout (5 min) / Ban buttons on fan messages
+    async function moderate(btn) {
+      const action = btn.dataset.mod, userId = btn.dataset.user, name = btn.dataset.name;
+      if (action === 'ban' && !confirm(`Ban ${name} from your chat?`)) return;
+      btn.disabled = true;
+      try {
+        await LonelyFansAuth.api(`/mod/${action}`, { method: 'POST', body: JSON.stringify(action === 'timeout' ? { userId, minutes: 5 } : { userId }) });
+        showOk('controlStatus', action === 'ban' ? `${name} is banned.` : `${name} is timed out for 5 minutes.`);
+        loadModList();
+      } catch (err) {
+        showError('chatError', err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function loadModList() {
+      const el = $('modList');
+      try {
+        const list = await LonelyFansAuth.api('/mod/list');
+        if (!list.length) { el.innerHTML = '<li class="note">No one is banned or timed out.</li>'; return; }
+        el.innerHTML = list.map(u => {
+          const until = u.type === 'timeout' ? LonelyFansAuth.parseServerDate(u.expiresAt) : null;
+          const label = u.type === 'ban' ? 'Banned' : `Timed out until ${until ? until.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '?'}`;
+          return `<li><span><strong>${esc(u.username)}</strong> <span class="note">${esc(label)}</span></span><button type="button" class="secondary" data-unban="${esc(u.userId)}" data-name="${esc(u.username)}">${u.type === 'ban' ? 'Unban' : 'Lift'}</button></li>`;
+        }).join('');
+      } catch (err) {
+        el.innerHTML = `<li class="message">Couldn't load list: ${esc(err.message)}</li>`;
+      }
+    }
+
+    async function unban(btn) {
+      btn.disabled = true; btn.textContent = '…';
+      try {
+        await LonelyFansAuth.api('/mod/unban', { method: 'POST', body: JSON.stringify({ userId: btn.dataset.unban }) });
+        showOk('controlStatus', `${btn.dataset.name} can chat again.`);
+      } catch (err) {
+        showError('controlStatus', err.message);
+      }
+      loadModList();
+    }
+
+    // Fans: tell them up front if they're banned or timed out
+    function showModNotice(text) {
+      $('modNotice').textContent = text;
+      $('modNotice').hidden = !text;
+      $('chatInput').disabled = !!text;
+      $('sendBtn').disabled = !!text;
+    }
+    let modTimer = null;
+    async function checkModStatus() {
+      try {
+        const s = await LonelyFansAuth.api(`/mod/status/${encodeURIComponent(creatorId)}`);
+        clearTimeout(modTimer);
+        if (s.banned) return showModNotice('You are banned from this chat by the creator.');
+        const until = s.timedOutUntil && LonelyFansAuth.parseServerDate(s.timedOutUntil);
+        if (until && until > new Date()) {
+          showModNotice(`You are timed out from this chat until ${until.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
+          modTimer = setTimeout(checkModStatus, Math.min(until - new Date() + 1000, 60000));
+          return;
+        }
+        showModNotice('');
+      } catch {}
     }
 
     async function renderChat() {
@@ -274,9 +353,9 @@
         await renderChat();
       } catch (err) {
         showError('chatError', err.message);
+        if (/banned|timed out/i.test(err.message)) checkModStatus();
       } finally {
-        btn.disabled = false;
-        input.focus();
+        if ($('modNotice').hidden) { btn.disabled = false; input.focus(); }
       }
     }
 
@@ -318,6 +397,15 @@
         const on = e.target.checked;
         if (!await postControl('/settings', { slow_mode: on }, null, `Slow mode ${on ? 'on' : 'off'}.`)) e.target.checked = !on;
       });
+      $('chat').addEventListener('click', (e) => {
+        const b = e.target.closest('button[data-mod]');
+        if (b) moderate(b);
+      });
+      $('modList').addEventListener('click', (e) => {
+        const b = e.target.closest('button[data-unban]');
+        if (b) unban(b);
+      });
+      loadModList();
       LonelyFansAuth.setLive(creatorId, true).catch(() => {});
       // Go offline when the creator leaves the page
       window.addEventListener('pagehide', () => {
@@ -345,6 +433,7 @@
         $('sendBtn').onclick = () => { location.href = 'login.html'; };
       }
       if (isCreator) initCreatorControls();
+      else if (session) { checkModStatus(); setInterval(checkModStatus, 15000); }
       loadHeader();
       loadEmotes().then(renderGoal);
       startChatStream();

@@ -1,7 +1,10 @@
 // Phase 1 + Phase 2 + Phase 3 – Auth + Profiles + Wallet
 // Hybrid: real API for auth/wallet, localStorage fallback for other features during migration.
 
-const API_BASE = 'https://lonely-fans.onrender.com/api';
+// Local dev (localhost) talks to a local backend; everything else uses production
+const API_BASE = /^(localhost|127\.0\.0\.1)$/.test(location.hostname)
+  ? 'http://localhost:3001/api'
+  : 'https://lonely-fans.onrender.com/api';
 const SESSION_KEY = 'lonelyfans_session';
 const TOKEN_KEY = 'lonelyfans_token';
 

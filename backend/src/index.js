@@ -81,6 +81,7 @@ const SCHEMA = `
   );
   CREATE TABLE IF NOT EXISTS streaks (user_id TEXT PRIMARY KEY, last_day TEXT, count INTEGER DEFAULT 0);
   CREATE TABLE IF NOT EXISTS live_status (creator_id TEXT PRIMARY KEY REFERENCES users(id), is_live INTEGER DEFAULT 0);
+  ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS user_id TEXT;
   CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_chat_creator ON chat_messages(creator_id, created_at);
 `;
@@ -414,17 +415,53 @@ app.post('/api/commands', authMiddleware, requireCreator, h(async (req, res) => 
 const UPSERT_MOD = `INSERT INTO chat_moderation (creator_id, user_id, type, expires_at) VALUES ($1, $2, $3, $4)
   ON CONFLICT (creator_id, user_id) DO UPDATE SET type = EXCLUDED.type, expires_at = EXCLUDED.expires_at`;
 
+async function requireChatUser(creatorId, userId) {
+  if (!userId || typeof userId !== 'string') throw new HttpError(400, 'Missing user');
+  if (userId === creatorId) throw new HttpError(400, "You can't moderate yourself");
+  const u = await one('SELECT id FROM users WHERE id = $1', [userId]);
+  if (!u) throw new HttpError(404, 'User not found');
+}
+
 app.post('/api/mod/timeout', authMiddleware, requireCreator, h(async (req, res) => {
-  const { userId, minutes } = req.body;
-  const expires = new Date(Date.now() + (minutes || 5) * 60000).toISOString();
+  const { userId } = req.body;
+  const minutes = req.body.minutes === undefined ? 5 : req.body.minutes;
+  if (!isPosInt(minutes) || minutes > 1440) return res.status(400).json({ error: 'Minutes must be a whole number from 1 to 1440' });
+  await requireChatUser(req.user.id, userId);
+  const expires = new Date(Date.now() + minutes * 60000).toISOString();
   await q(UPSERT_MOD, [req.user.id, userId, 'timeout', expires]);
-  res.json({ ok: true });
+  res.json({ ok: true, expiresAt: expires });
 }));
 
 app.post('/api/mod/ban', authMiddleware, requireCreator, h(async (req, res) => {
   const { userId } = req.body;
+  await requireChatUser(req.user.id, userId);
   await q(UPSERT_MOD, [req.user.id, userId, 'ban', null]);
   res.json({ ok: true });
+}));
+
+app.post('/api/mod/unban', authMiddleware, requireCreator, h(async (req, res) => {
+  const { userId } = req.body;
+  if (!userId || typeof userId !== 'string') return res.status(400).json({ error: 'Missing user' });
+  await q('DELETE FROM chat_moderation WHERE creator_id = $1 AND user_id = $2', [req.user.id, userId]);
+  res.json({ ok: true });
+}));
+
+// Banned users and active timeouts for the creator's controls
+app.get('/api/mod/list', authMiddleware, requireCreator, h(async (req, res) => {
+  const rows = await q(`SELECT m.user_id, m.type, m.expires_at, u.email FROM chat_moderation m
+    JOIN users u ON u.id = m.user_id WHERE m.creator_id = $1 ORDER BY m.type, u.email`, [req.user.id]);
+  const now = new Date();
+  res.json(rows.filter(r => r.type === 'ban' || new Date(r.expires_at) > now).map(r => ({
+    userId: r.user_id, username: r.email.split('@')[0], type: r.type, expiresAt: r.expires_at
+  })));
+}));
+
+// Lets a viewer see up front whether they can chat
+app.get('/api/mod/status/:creatorId', authMiddleware, h(async (req, res) => {
+  const mod = await one('SELECT * FROM chat_moderation WHERE creator_id = $1 AND user_id = $2', [req.params.creatorId, req.user.id]);
+  const banned = !!(mod && mod.type === 'ban');
+  const timedOutUntil = mod && mod.type === 'timeout' && new Date(mod.expires_at) > new Date() ? mod.expires_at : null;
+  res.json({ banned, timedOutUntil });
 }));
 
 // Enhanced chat post with command & mod check
@@ -442,7 +479,8 @@ app.post('/api/chat', authMiddleware, h(async (req, res) => {
   if (mod) {
     if (mod.type === 'ban') return res.status(403).json({ error: 'You are banned from this chat' });
     if (mod.type === 'timeout' && new Date(mod.expires_at) > new Date()) {
-      return res.status(403).json({ error: 'You are timed out' });
+      const mins = Math.max(1, Math.ceil((new Date(mod.expires_at) - Date.now()) / 60000));
+      return res.status(403).json({ error: `You are timed out from this chat for ${mins} more minute${mins === 1 ? '' : 's'}` });
     }
   }
 
@@ -470,7 +508,7 @@ app.post('/api/chat', authMiddleware, h(async (req, res) => {
   // Check if subscriber
   const isSub = await one('SELECT 1 FROM subscriptions WHERE fan_id = $1 AND creator_id = $2 AND active = 1', [req.user.id, creatorId]);
 
-  await q('INSERT INTO chat_messages (id, creator_id, username, text, is_sub) VALUES ($1, $2, $3, $4, $5)', [uuid(), creatorId, username, text, isSub ? 1 : 0]);
+  await q('INSERT INTO chat_messages (id, creator_id, username, text, is_sub, user_id) VALUES ($1, $2, $3, $4, $5, $6)', [uuid(), creatorId, username, text, isSub ? 1 : 0, req.user.id]);
   res.json({ ok: true });
 }));
 
