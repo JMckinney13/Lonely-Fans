@@ -19,6 +19,10 @@
     .avatar { width: 48px; height: 48px; border-radius: 50%; background: #0e121c; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.2rem; color: var(--accent-soft); }
     .live-dot { color: #ff6b6b; font-size: 0.75rem; font-weight: 600; margin-left: 0.3rem; }
     .card-actions { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
+    .filter-tabs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.6rem; }
+    .filter-tabs button { width: auto; margin: 0; padding: 0.4rem 0.9rem; font-size: 0.85rem; }
+    .filter-tabs button[aria-pressed="false"] { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    .following-tag { color: var(--accent-soft); font-size: 0.75rem; font-weight: 600; }
   </style>
 </head>
 <body>
@@ -36,6 +40,11 @@
     <h1>Browse Creators</h1>
     <div class="search-box">
       <input type="search" id="search" placeholder="Search creators..." oninput="renderGrid()">
+      <div class="filter-tabs" id="filters" role="group" aria-label="Filter creators">
+        <button type="button" data-filter="all" aria-pressed="true">All</button>
+        <button type="button" data-filter="following" aria-pressed="false">Following</button>
+        <button type="button" data-filter="live" aria-pressed="false">Live now</button>
+      </div>
     </div>
     <div id="grid" class="creator-grid"></div>
   </main>
@@ -45,15 +54,31 @@
     const esc = LonelyFansAuth.escapeHtml;
     const grid = document.getElementById('grid');
     let creators = [];
+    let followIds = new Set();
+    let followsError = '';
+    let filter = 'all';
+
+    document.getElementById('filters').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-filter]');
+      if (!b) return;
+      filter = b.dataset.filter;
+      document.querySelectorAll('#filters button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+      renderGrid();
+    });
 
     function renderGrid() {
       const q = document.getElementById('search').value.trim().toLowerCase();
-      const filtered = creators.filter(c => c.displayName.toLowerCase().includes(q) || c.bio.toLowerCase().includes(q));
+      const filtered = creators.filter(c => (c.displayName.toLowerCase().includes(q) || c.bio.toLowerCase().includes(q))
+        && (filter !== 'following' || followIds.has(c.id))
+        && (filter !== 'live' || c.isLive));
 
       if (filtered.length === 0) {
-        grid.innerHTML = creators.length
-          ? '<div class="empty-state" style="grid-column:1/-1">No creators match your search.</div>'
-          : '<div class="empty-state" style="grid-column:1/-1">No creators yet.</div>';
+        let msg = 'No creators yet.';
+        if (filter === 'following' && followsError) msg = `Couldn't load who you follow: ${esc(followsError)}`;
+        else if (filter === 'following' && !followIds.size) msg = "You aren't following anyone yet. Open a creator's page and tap Follow.";
+        else if (filter === 'live' && !q) msg = 'No one is live right now.';
+        else if (creators.length) msg = 'No creators match your search.';
+        grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">${msg}</div>`;
         return;
       }
 
@@ -64,6 +89,7 @@
             </div>
             <div class="info">
               <h3>${esc(c.displayName)} ${c.isLive ? '<span class="live-dot">● LIVE</span>' : ''}</h3>
+              ${followIds.has(c.id) ? '<div class="following-tag">✓ Following</div>' : ''}
               <p class="note">${esc(c.bio.slice(0, 70) || 'No bio')}${c.bio.length > 70 ? '…' : ''}</p>
               <div class="card-actions">
                 <a href="creator.html?id=${encodeURIComponent(c.id)}" class="btn small">View Page</a>
@@ -76,8 +102,11 @@
 
     if (session) {
       grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1">Loading creators…</div>';
-      LonelyFansAuth.getCreators()
-        .then(list => { creators = list; renderGrid(); })
+      Promise.all([
+        LonelyFansAuth.getCreators(),
+        LonelyFansAuth.getMyFollows().catch(err => { followsError = err.message; return []; })
+      ])
+        .then(([list, follows]) => { creators = list; followIds = new Set(follows.map(f => f.id)); renderGrid(); })
         .catch(err => {
           grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">Couldn't load creators: ${esc(err.message)}</div>`;
         });

@@ -59,6 +59,25 @@
         `;
       }
 
+      // Followed creators who are live right now
+      content.insertAdjacentHTML('beforeend', `
+        <h2>Your creators live now</h2>
+        <div id="liveFollows" class="tx-list"><p class="note">Loading…</p></div>`);
+      const esc = LonelyFansAuth.escapeHtml;
+      LonelyFansAuth.getMyFollows().then(list => {
+        const el = document.getElementById('liveFollows');
+        const live = list.filter(c => c.isLive);
+        if (!list.length) { el.innerHTML = '<p class="note">You aren\'t following anyone yet. <a href="browse.html">Browse creators</a></p>'; return; }
+        if (!live.length) { el.innerHTML = `<p class="note">None of the ${list.length} creator${list.length === 1 ? '' : 's'} you follow ${list.length === 1 ? 'is' : 'are'} live right now.</p>`; return; }
+        el.innerHTML = live.map(c => `
+          <div class="tx">
+            <div><strong>${esc(c.displayName)}</strong> <span class="live-dot">● LIVE</span></div>
+            <a href="live.html?id=${encodeURIComponent(c.id)}" class="btn small">Watch</a>
+          </div>`).join('');
+      }).catch(err => {
+        document.getElementById('liveFollows').innerHTML = `<p class="message">Couldn't load your follows: ${esc(err.message)}</p>`;
+      });
+
       // Daily streak (credited to the server-side wallet)
       LonelyFansAuth.claimDailyStreak(session.id).then(streak => {
         if (streak.claimed) {

@@ -195,22 +195,35 @@ function addTransaction(userId, type, amount, description) {
   return tx;
 }
 
-// Follow (localStorage for now)
-function getFollows() {
-  return JSON.parse(localStorage.getItem('lf_follows') || '{}');
+// Follows (server-side). Follows saved by older versions in this browser are
+// moved to the server once, then removed from localStorage.
+async function migrateLocalFollows() {
+  const session = getSession();
+  const all = JSON.parse(localStorage.getItem('lf_follows') || '{}');
+  const mine = session && Array.isArray(all[session.id]) ? all[session.id] : [];
+  if (!mine.length) return;
+  for (const creatorId of mine) {
+    try { await api('/follows', { method: 'POST', body: JSON.stringify({ creatorId }) }); } catch {}
+  }
+  delete all[session.id];
+  if (Object.keys(all).length) localStorage.setItem('lf_follows', JSON.stringify(all));
+  else localStorage.removeItem('lf_follows');
 }
-function toggleFollow(fanId, creatorId) {
-  const follows = getFollows();
-  if (!follows[fanId]) follows[fanId] = [];
-  const idx = follows[fanId].indexOf(creatorId);
-  if (idx === -1) follows[fanId].push(creatorId);
-  else follows[fanId].splice(idx, 1);
-  localStorage.setItem('lf_follows', JSON.stringify(follows));
-  return idx === -1;
+async function getMyFollows() {
+  await migrateLocalFollows();
+  return api('/follows');
 }
-function isFollowing(fanId, creatorId) {
-  const follows = getFollows();
-  return (follows[fanId] || []).includes(creatorId);
+async function toggleFollow(fanId, creatorId) {
+  const following = await isFollowing(fanId, creatorId);
+  const data = following
+    ? await api(`/follows/${encodeURIComponent(creatorId)}`, { method: 'DELETE' })
+    : await api('/follows', { method: 'POST', body: JSON.stringify({ creatorId }) });
+  return data.following;
+}
+async function isFollowing(fanId, creatorId) {
+  await migrateLocalFollows();
+  const data = await api(`/follows/${encodeURIComponent(creatorId)}`);
+  return data.following;
 }
 
 // Daily streak (server-side, credits the real wallet)
@@ -427,7 +440,7 @@ window.LonelyFansAuth = {
   getCreatorTiers, saveCreatorTiers, subscribe, isSubscribed,
   setCreatorGoal, getCreatorGoal, tipGoal,
   addChatMessage, getChatMessages, setLive, isLive, getUsers,
-  toggleFollow, isFollowing, claimDailyStreak, getCreators,
+  toggleFollow, isFollowing, getMyFollows, claimDailyStreak, getCreators,
   escapeHtml, parseServerDate, requireSession,
   getCreatorEarnings, requestPayout, getCreatorPayouts,
   submitReport, hasAttested, submitAttestation,

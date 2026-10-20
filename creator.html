@@ -45,10 +45,11 @@
           return;
         }
         const isOwner = !!(session && session.id === creatorId);
-        const [tiers, subscribed, live] = await Promise.all([
+        const [tiers, subscribed, live, following] = await Promise.all([
           LonelyFansAuth.getCreatorTiers(creatorId),
           session && !isOwner ? LonelyFansAuth.isSubscribed(session.id, creatorId) : false,
-          LonelyFansAuth.isLive(creatorId)
+          LonelyFansAuth.isLive(creatorId),
+          session && !isOwner ? LonelyFansAuth.isFollowing(session.id, creatorId).catch(() => false) : false
         ]);
 
         page.style.setProperty('--theme', safeColor(profile.themeColor, '#ff6b6b'));
@@ -76,7 +77,7 @@
             <div class="card-actions">
               <a href="live.html?id=${encodeURIComponent(creatorId)}" class="btn small">${isOwner ? 'Go Live' : live ? 'Watch Live' : 'Stream &amp; Chat'}</a>
               ${isOwner ? '<a href="customize.html" class="btn small secondary">Edit Page</a>' : ''}
-              ${session && !isOwner ? `<button class="secondary btn small" onclick="doFollow(this)">${LonelyFansAuth.isFollowing(session.id, creatorId) ? 'Following' : 'Follow'}</button>` : ''}
+              ${session && !isOwner ? `<button class="secondary btn small" id="followBtn" onclick="doFollow(this)">${following ? 'Following' : 'Follow'}</button>` : ''}
             </div>
             <h2>Subscription Tiers</h2>
             <p id="subMsg" class="message" role="status"></p>
@@ -89,10 +90,22 @@
       }
     }
 
-    function doFollow(btn) {
+    async function doFollow(btn) {
       if (!session) { location.href = 'login.html'; return; }
-      const nowFollowing = LonelyFansAuth.toggleFollow(session.id, creatorId);
-      btn.textContent = nowFollowing ? 'Following' : 'Follow';
+      const prev = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '…';
+      try {
+        const nowFollowing = await LonelyFansAuth.toggleFollow(session.id, creatorId);
+        btn.textContent = nowFollowing ? 'Following' : 'Follow';
+      } catch (err) {
+        btn.textContent = prev;
+        const msg = document.getElementById('subMsg');
+        msg.className = 'message';
+        msg.textContent = err.message;
+      } finally {
+        btn.disabled = false;
+      }
     }
 
     async function doSubscribe(btn, tierId, price) {

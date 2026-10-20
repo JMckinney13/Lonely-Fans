@@ -82,6 +82,10 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS streaks (user_id TEXT PRIMARY KEY, last_day TEXT, count INTEGER DEFAULT 0);
   CREATE TABLE IF NOT EXISTS live_status (creator_id TEXT PRIMARY KEY REFERENCES users(id), is_live INTEGER DEFAULT 0);
   ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS user_id TEXT;
+  CREATE TABLE IF NOT EXISTS follows (
+    fan_id TEXT NOT NULL REFERENCES users(id), creator_id TEXT NOT NULL REFERENCES users(id),
+    created_at TEXT DEFAULT ${NOW}, PRIMARY KEY (fan_id, creator_id)
+  );
   CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_chat_creator ON chat_messages(creator_id, created_at);
 `;
@@ -179,6 +183,40 @@ app.get('/api/creators', h(async (req, res) => {
     themeColor: r.theme_color || '#ff6b6b',
     isLive: !!r.is_live
   })));
+}));
+
+// Follows
+app.get('/api/follows', authMiddleware, h(async (req, res) => {
+  const rows = await q(`
+    SELECT u.id, u.email, p.display_name, p.bio, p.theme_color, COALESCE(l.is_live, 0) AS is_live, f.created_at
+    FROM follows f JOIN users u ON u.id = f.creator_id
+    LEFT JOIN profiles p ON p.user_id = u.id
+    LEFT JOIN live_status l ON l.creator_id = u.id
+    WHERE f.fan_id = $1 ORDER BY is_live DESC, f.created_at DESC`, [req.user.id]);
+  res.json(rows.map(r => ({
+    id: r.id, displayName: r.display_name || r.email.split('@')[0], bio: r.bio || '',
+    themeColor: r.theme_color || '#ff6b6b', isLive: !!r.is_live, followedAt: r.created_at
+  })));
+}));
+
+app.get('/api/follows/:creatorId', authMiddleware, h(async (req, res) => {
+  const row = await one('SELECT 1 FROM follows WHERE fan_id = $1 AND creator_id = $2', [req.user.id, req.params.creatorId]);
+  res.json({ following: !!row });
+}));
+
+app.post('/api/follows', authMiddleware, h(async (req, res) => {
+  const { creatorId } = req.body;
+  if (!creatorId || typeof creatorId !== 'string') return res.status(400).json({ error: 'Missing creator' });
+  if (creatorId === req.user.id) return res.status(400).json({ error: "You can't follow yourself" });
+  const creator = await one("SELECT id FROM users WHERE id = $1 AND role = 'creator'", [creatorId]);
+  if (!creator) return res.status(404).json({ error: 'Creator not found' });
+  await q('INSERT INTO follows (fan_id, creator_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [req.user.id, creatorId]);
+  res.json({ ok: true, following: true });
+}));
+
+app.delete('/api/follows/:creatorId', authMiddleware, h(async (req, res) => {
+  await q('DELETE FROM follows WHERE fan_id = $1 AND creator_id = $2', [req.user.id, req.params.creatorId]);
+  res.json({ ok: true, following: false });
 }));
 
 // Daily login streak (server-side so the reward actually lands in the wallet)
