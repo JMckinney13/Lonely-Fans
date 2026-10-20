@@ -16,7 +16,7 @@
       <label>Password</label>
       <input type="password" id="password" required>
       
-      <button type="submit">Log In</button>
+      <button type="submit" id="submitBtn">Log In</button>
     </form>
     <p>Don't have an account? <a href="register.html">Register</a></p>
     <p id="message" class="message"></p>
@@ -25,17 +25,22 @@
   <script>
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const email = document.getElementById('email').value;
-      const password = document.getElementById('password').value;
+      const btn = document.getElementById('submitBtn');
+      const msg = document.getElementById('message');
+      btn.disabled = true;
+      btn.textContent = 'Signing in...';
+      msg.className = 'message';
+      msg.textContent = '';
       try {
-        const user = await LonelyFansAuth.login(email, password);
-        if (!user.ageVerified) {
-          window.location.href = 'age-verify.html';
-        } else {
-          window.location.href = 'dashboard.html';
-        }
+        const user = await LonelyFansAuth.login(
+          document.getElementById('email').value,
+          document.getElementById('password').value
+        );
+        location.href = user.ageVerified ? 'dashboard.html' : 'age-verify.html';
       } catch (err) {
-        document.getElementById('message').textContent = err.message;
+        msg.textContent = err.message;
+        btn.disabled = false;
+        btn.textContent = 'Log In';
       }
     });
   </script>

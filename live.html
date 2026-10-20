@@ -6,18 +6,25 @@
   <title>Live – Lonely Fans</title>
   <link rel="stylesheet" href="styles.css">
   <style>
-    .live-layout { display: grid; grid-template-columns: 1fr 320px; gap: 1rem; max-width: 1100px; margin: 1rem auto; padding: 0 1rem; }
-    @media (max-width: 800px) { .live-layout { grid-template-columns: 1fr; } }
+    .live-layout { display: grid; grid-template-columns: 1fr 340px; gap: 1rem; max-width: 1200px; margin: 1rem auto; padding: 0 1rem; }
+    @media (max-width: 800px) { 
+      .live-layout { grid-template-columns: 1fr; } 
+      .side-panel { height: 50vh; }
+    }
+    .empty { color: var(--muted); text-align: center; padding: 1.5rem; font-size: 0.9rem; }
     .video-area { background: #000; border-radius: 12px; aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; color: #666; position: relative; }
     .video-area .live-badge { position: absolute; top: 12px; left: 12px; background: #ff6b6b; color: white; padding: 4px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: 700; }
     .side-panel { background: var(--card); border-radius: 12px; padding: 1rem; display: flex; flex-direction: column; height: 70vh; }
     .goal-box { background: #1a1a22; border: 1px solid #333; border-radius: 10px; padding: 0.8rem; margin-bottom: 1rem; }
     .progress-bar { height: 8px; background: #333; border-radius: 4px; overflow: hidden; margin: 0.5rem 0; }
     .progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.3s; }
-    .chat-messages { flex: 1; overflow-y: auto; font-size: 0.9rem; margin-bottom: 0.5rem; }
-    .chat-messages div { margin-bottom: 0.4rem; }
-    .chat-input { display: flex; gap: 0.4rem; }
+    .chat-messages { flex: 1; overflow-y: auto; font-size: 0.85rem; margin-bottom: 0.5rem; padding: 0.5rem; background: #0e121c; border-radius: 8px; }
+    .chat-messages .msg { margin-bottom: 0.35rem; word-break: break-word; }
+    .badge { display: inline-block; background: #ff6b6b; color: white; font-size: 0.65rem; padding: 1px 4px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
+    .emote { font-size: 1.1rem; vertical-align: middle; }
+    .chat-input { display: flex; gap: 0.4rem; align-items: center; }
     .chat-input input { flex: 1; }
+    .emoji-btn { background: transparent; border: none; font-size: 1.2rem; cursor: pointer; padding: 0.3rem; }
   </style>
 </head>
 <body>
@@ -38,14 +45,39 @@
         <div class="live-badge">LIVE</div>
         Simulated stream – creator is on camera
       </div>
-      <div style="margin-top:1rem" id="creatorControls"></div>
+      <div style="margin-top:1rem" id="creatorControls">
+        ${isCreator ? `
+          <h3>Chat Commands</h3>
+          <form onsubmit="addCommand(event)" style="display:flex;gap:0.4rem">
+            <input id="cmdTrigger" placeholder="!hello" style="flex:1">
+            <input id="cmdResponse" placeholder="Response" style="flex:2">
+            <button style="width:auto">Add</button>
+          </form>
+          <h3 style="margin-top:1rem">Custom Emotes</h3>
+          <form onsubmit="addEmote(event)" style="display:flex;gap:0.4rem">
+            <input id="emoteCode" placeholder=":heart:" style="flex:1">
+            <input id="emoteEmoji" placeholder="❤️" style="width:60px">
+            <button style="width:auto">Add</button>
+          </form>
+          <label style="margin-top:0.8rem"><input type="checkbox" id="slowMode" onchange="toggleSlow()"> Slow mode</label>
+        ` : ''}
+      </div>
     </div>
     <div class="side-panel">
       <div class="goal-box" id="goalBox">No active goal</div>
       <div class="chat-messages" id="chat"></div>
       <div class="chat-input">
-        <input type="text" id="chatInput" placeholder="Say something...">
+        <button class="emoji-btn" onclick="toggleEmoji()">😊</button>
+        <input type="text" id="chatInput" placeholder="Say something... or !command">
         <button style="width:auto; margin:0" onclick="sendChat()">Send</button>
+      </div>
+      <div id="emojiPicker" style="display:none; background:#1a1f2e; padding:0.5rem; border-radius:8px; margin-top:0.3rem; font-size:1.2rem;">
+        <span onclick="insertEmoji('❤️')">❤️</span>
+        <span onclick="insertEmoji('🔥')">🔥</span>
+        <span onclick="insertEmoji('😂')">😂</span>
+        <span onclick="insertEmoji('😍')">😍</span>
+        <span onclick="insertEmoji('👍')">👍</span>
+        <span onclick="insertEmoji('🎉')">🎉</span>
       </div>
     </div>
   </div>
@@ -100,14 +132,78 @@
       } catch (err) { alert(err.message); }
     }
 
-    function renderChat() {
-      const msgs = LonelyFansAuth.getChatMessages(creatorId);
-      const el = document.getElementById('chat');
-      el.innerHTML = msgs.map(m => `<div><strong>${m.username}:</strong> ${m.text}</div>`).join('');
-      el.scrollTop = el.scrollHeight;
+    function startChatStream() {
+      const es = new EventSource(`${LonelyFansAuth.API_BASE}/chat/${creatorId}/stream`);
+      es.onmessage = (e) => {
+        try {
+          const msgs = JSON.parse(e.data);
+          const el = document.getElementById('chat');
+          if (!msgs || msgs.length === 0) {
+            el.innerHTML = '<div class="empty">No messages yet. Say hello!</div>';
+            return;
+          }
+          el.innerHTML = msgs.map(m => {
+            const badge = m.is_sub ? '<span class="badge">SUB</span>' : '';
+            const text = replaceEmotes(m.text || '');
+            return `<div class="msg ${m.username === 'Bot' ? 'bot' : ''}">${badge}<strong>${m.username}:</strong> ${text}</div>`;
+          }).join('');
+          el.scrollTop = el.scrollHeight;
+        } catch {}
+      };
+      es.onerror = () => {
+        es.close();
+        setTimeout(startChatStream, 3000); // reconnect
+      };
+    }
+
+    let emotes = [];
+    async function loadEmotes() {
+      try {
+        emotes = await LonelyFansAuth.api(`/emotes/${creatorId}`);
+      } catch {}
+    }
+    function replaceEmotes(text) {
+      let t = text;
+      emotes.forEach(e => {
+        t = t.replace(new RegExp(e.code, 'gi'), `<span class="emote">${e.emoji}</span>`);
+      });
+      return t;
     }
 
     function sendChat() {
+      const input = document.getElementById('chatInput');
+      const text = input.value.trim();
+      if (!text || !session) return;
+      LonelyFansAuth.addChatMessage(creatorId, session.email.split('@')[0], text);
+      input.value = '';
+      setTimeout(renderChat, 200);
+    }
+
+    function toggleEmoji() {
+      const p = document.getElementById('emojiPicker');
+      p.style.display = p.style.display === 'none' ? 'block' : 'none';
+    }
+    function insertEmoji(e) {
+      const input = document.getElementById('chatInput');
+      input.value += e;
+      input.focus();
+    }
+
+    async function addEmote(e) {
+      e.preventDefault();
+      const code = document.getElementById('emoteCode').value;
+      const emoji = document.getElementById('emoteEmoji').value;
+      await LonelyFansAuth.api('/emotes', { method: 'POST', body: JSON.stringify({ code, emoji }) });
+      alert('Emote added');
+      e.target.reset();
+      loadEmotes();
+    }
+    async function toggleSlow() {
+      const on = document.getElementById('slowMode').checked;
+      await LonelyFansAuth.api('/settings', { method: 'POST', body: JSON.stringify({ slow_mode: on }) });
+    }
+
+    loadEmotes();
       if (!session) { alert('Log in to chat'); return; }
       const input = document.getElementById('chatInput');
       const text = input.value.trim();
@@ -126,9 +222,8 @@
     if (isCreator) LonelyFansAuth.setLive(creatorId, true);
 
     renderGoal();
-    renderChat();
-    setInterval(renderChat, 2000); // simple poll for multi-tab demo
-    setInterval(renderGoal, 2000);
+    startChatStream();
+    setInterval(renderGoal, 3000);
   </script>
 </body>
 </html>

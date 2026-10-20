@@ -49,14 +49,21 @@
       const txs = await LonelyFansAuth.getUserTransactions(session.id);
       const list = document.getElementById('transactions');
       if (txs.length === 0) {
-        list.innerHTML = '<p class="note">No transactions yet.</p>';
+        list.innerHTML = '<div class="empty-state">No transactions yet.</div>';
       } else {
-        list.innerHTML = txs.slice(0, 10).map(tx => `
-          <div class="tx">
-            <div>${tx.description}</div>
-            <div class="${tx.amount > 0 ? 'positive' : 'negative'}">${tx.amount > 0 ? '+' : ''}${tx.amount.toLocaleString()}</div>
-          </div>
-        `).join('');
+        list.innerHTML = txs.slice(0, 15).map(tx => {
+          const isPositive = tx.amount > 0;
+          const date = tx.timestamp ? new Date(tx.timestamp).toLocaleDateString() : '';
+          return `
+            <div class="tx">
+              <div class="desc">
+                <div>${tx.description || 'Transaction'}</div>
+                ${date ? `<div class="meta">${date}</div>` : ''}
+              </div>
+              <div class="amount ${isPositive ? 'positive' : 'negative'}">${isPositive ? '+' : ''}${tx.amount.toLocaleString()}</div>
+            </div>
+          `;
+        }).join('');
       }
     }
 

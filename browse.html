@@ -7,11 +7,14 @@
   <meta name="description" content="Discover creators on Lonely Fans. Subscribe with SparkCoins and join live streams.">
   <link rel="stylesheet" href="styles.css">
   <style>
-    .creator-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
-    .creator-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-    .creator-card .banner { height: 100px; background: #1a1520; }
-    .creator-card .info { padding: 1rem; }
-    .creator-card h3 { margin: 0 0 0.4rem; }
+    .creator-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; margin-top: 1rem; }
+    .creator-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; transition: transform 0.15s, box-shadow 0.15s; }
+    .creator-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.25); }
+    .creator-card .banner { height: 90px; background: #1a1520; }
+    .creator-card .info { padding: 0.9rem; }
+    .creator-card h3 { margin: 0 0 0.3rem; font-size: 1.05rem; }
+    .search-box { margin: 1rem 0; }
+    .search-box input { max-width: 320px; }
   </style>
 </head>
 <body>
@@ -27,7 +30,9 @@
   </header>
   <main class="container wide">
     <h1>Browse Creators</h1>
-    <p class="note">Public creator pages on this prototype.</p>
+    <div class="search-box">
+      <input type="search" id="search" placeholder="Search creators..." oninput="renderGrid()">
+    </div>
     <div id="grid" class="creator-grid"></div>
   </main>
   <script src="auth.js"></script>
@@ -35,14 +40,24 @@
     const session = LonelyFansAuth.getSession();
     if (!session) location.href = 'login.html';
 
-    const users = LonelyFansAuth.getUsers();
+    const users = LonelyFansAuth.getUsers() || [];
     const creators = users.filter(u => u.role === 'creator');
     const grid = document.getElementById('grid');
 
-    if (creators.length === 0) {
-      grid.innerHTML = '<p class="note">No creators yet. Be the first!</p>';
-    } else {
-      grid.innerHTML = creators.map(c => {
+    function renderGrid() {
+      const q = document.getElementById('search').value.toLowerCase();
+      const filtered = creators.filter(c => {
+        const profile = LonelyFansAuth.getProfile(c.id) || {};
+        const name = (profile.displayName || c.email || '').toLowerCase();
+        return name.includes(q);
+      });
+
+      if (filtered.length === 0) {
+        grid.innerHTML = '<div class="empty-state">No creators found.</div>';
+        return;
+      }
+
+      grid.innerHTML = filtered.map(c => {
         const profile = LonelyFansAuth.getProfile(c.id) || {};
         const live = LonelyFansAuth.isLive(c.id);
         return `
@@ -50,14 +65,16 @@
             <div class="banner" style="background:${profile.themeColor || '#ff6b6b'}"></div>
             <div class="info">
               <h3>${profile.displayName || c.email.split('@')[0]}</h3>
-              <p class="note">${(profile.bio || '').slice(0, 80)}${profile.bio && profile.bio.length > 80 ? '…' : ''}</p>
-              ${live ? '<span class="positive">LIVE</span>' : ''}
-              <p><a href="creator.html?id=${c.id}"><button>View Page</button></a></p>
+              <p class="note">${(profile.bio || 'No bio').slice(0, 70)}${(profile.bio || '').length > 70 ? '…' : ''}</p>
+              ${live ? '<span style="color:#ff6b6b;font-size:0.8rem;font-weight:600">● LIVE</span>' : ''}
+              <p style="margin-top:0.6rem"><a href="creator.html?id=${c.id}" class="btn" style="width:auto;padding:0.5rem 1rem">View Page</a></p>
             </div>
           </div>
         `;
       }).join('');
     }
+
+    renderGrid();
   </script>
 </body>
 </html>

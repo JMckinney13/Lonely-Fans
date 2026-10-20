@@ -22,7 +22,7 @@
         <option value="creator">Creator</option>
       </select>
       
-      <button type="submit">Register</button>
+      <button type="submit" id="submitBtn">Register</button>
     </form>
     <p>Already have an account? <a href="login.html">Log in</a></p>
     <p id="message" class="message"></p>
@@ -31,15 +31,25 @@
   <script>
     document.getElementById('registerForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const email = document.getElementById('email').value;
-      const password = document.getElementById('password').value;
-      const role = document.getElementById('role').value;
+      const btn = document.getElementById('submitBtn');
+      const msg = document.getElementById('message');
+      btn.disabled = true;
+      btn.textContent = 'Creating account...';
+      msg.className = 'message';
+      msg.textContent = '';
       try {
-        await LonelyFansAuth.register(email, password, role);
-        document.getElementById('message').textContent = 'Account created! Redirecting to age verification...';
-        setTimeout(() => window.location.href = 'age-verify.html', 800);
+        await LonelyFansAuth.register(
+          document.getElementById('email').value,
+          document.getElementById('password').value,
+          document.getElementById('role').value
+        );
+        msg.className = 'message success';
+        msg.textContent = 'Account created! Redirecting...';
+        setTimeout(() => location.href = 'age-verify.html', 700);
       } catch (err) {
-        document.getElementById('message').textContent = err.message;
+        msg.textContent = err.message;
+        btn.disabled = false;
+        btn.textContent = 'Register';
       }
     });
   </script>

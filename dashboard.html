@@ -37,27 +37,27 @@
     if (session.role === 'creator') {
       content.innerHTML = `
         <h2>Creator Dashboard</h2>
-        <p>Your customizable page and streaming tools will appear here in later phases.</p>
-        <p><a href="customize.html"><button>Customize Your Page</button></a></p>
-        <p><a href="tiers.html"><button class="secondary">Manage Subscription Tiers</button></a></p>
-        <p><a href="live.html?id=${session.id}"><button>Go Live</button></a></p>
-        <p><a href="earnings.html"><button class="secondary">Earnings & Payouts</button></a></p>
-        <p><a href="attest.html"><button class="secondary">2257 Attestation</button></a></p>
-        <p><a href="report.html"><button class="secondary">Report Content</button></a></p>
-        <ul>
-          <li>Profile customization (Phase 2) ✅</li>
-          <li>Go Live & Goals (Phase 5)</li>
-          <li>Earnings & Payouts (Phase 6)</li>
-        </ul>
+        <p class="note">Manage your page, go live, and track earnings.</p>
+        <div style="display:grid; gap:0.6rem; margin-top:1.25rem;">
+          <a href="customize.html" class="btn">Customize Your Page</a>
+          <a href="tiers.html" class="btn secondary">Manage Subscription Tiers</a>
+          <a href="live.html?id=${session.id}" class="btn">Go Live</a>
+          <a href="earnings.html" class="btn secondary">Earnings & Payouts</a>
+          <a href="attest.html" class="btn secondary">2257 Attestation</a>
+          <a href="report.html" class="btn secondary">Report Content</a>
+        </div>
       `;
     } else {
       content.innerHTML = `
         <h2>Fan Dashboard</h2>
-        <p>Browse creators, manage subscriptions, and your SparkCoins will live here.</p>
-        <p><a href="browse.html"><button>Browse Creators</button></a></p>
-        <p><a href="wallet.html"><button>Open SparkCoins Wallet</button></a></p>
-        <p><a href="report.html"><button class="secondary">Report Content</button></a></p>
-        <ul>
+        <p class="note">Browse creators and manage your SparkCoins.</p>
+        <div style="display:grid; gap:0.6rem; margin-top:1.25rem;">
+          <a href="browse.html" class="btn">Browse Creators</a>
+          <a href="wallet.html" class="btn">Open SparkCoins Wallet</a>
+          <a href="report.html" class="btn secondary">Report Content</a>
+        </div>
+      `;
+    }
           <li>SparkCoins wallet (Phase 3) ✅</li>
           <li>Subscriptions (Phase 4)</li>
           <li>Live rooms (Phase 5)</li>

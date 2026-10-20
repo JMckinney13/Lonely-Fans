@@ -1,7 +1,7 @@
 // Phase 1 + Phase 2 + Phase 3 – Auth + Profiles + Wallet
 // Hybrid: real API for auth/wallet, localStorage fallback for other features during migration.
 
-const API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:3001/api' : 'https://lonely-fans.onrender.com/api';
+const API_BASE = 'https://lonely-fans.onrender.com/api';
 const SESSION_KEY = 'lonelyfans_session';
 const TOKEN_KEY = 'lonelyfans_token';
 
@@ -148,6 +148,14 @@ function addTransaction(userId, type, amount, description) {
 
 function getUserTransactions(userId) {
   return getTransactions().filter(tx => tx.userId === userId);
+}
+
+async function buyCoins(amount, price) {
+  const data = await api('/wallet/buy', {
+    method: 'POST',
+    body: JSON.stringify({ amount })
+  });
+  return data.balance;
 }
 
 const TIERS_KEY = 'lonelyfans_tiers';

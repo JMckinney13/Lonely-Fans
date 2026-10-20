@@ -25,52 +25,52 @@
     const creatorId = params.get('id');
     const session = LonelyFansAuth.getSession();
 
-    if (!creatorId) {
-      document.getElementById('creatorPage').innerHTML = '<p>No creator specified.</p>';
-    } else {
-    (async () => {
-      const profile = await LonelyFansAuth.getProfile(creatorId);
-      if (!profile) {
-        document.getElementById('creatorPage').innerHTML = '<p>Creator not found.</p>';
-        return;
-      }
-      const tiers = LonelyFansAuth.getCreatorTiers(creatorId);
-      const subscribed = session && LonelyFansAuth.isSubscribed(session.id, creatorId);
-
-      const page = document.getElementById('creatorPage');
-      page.style.setProperty('--theme', profile.themeColor || '#ff6b6b');
-      page.style.setProperty('--accent', profile.accentColor || '#ff8e8e');
-      page.className = 'creator-page layout-' + (profile.layout || 'classic');
-
-      let tiersHtml = '';
-      if (tiers.length === 0) {
-        tiersHtml = '<p class="note">No subscription tiers set yet.</p>';
+      if (!creatorId) {
+        document.getElementById('creatorPage').innerHTML = '<div class="empty-state">No creator specified.</div>';
       } else {
-        tiersHtml = tiers.map(t => `
-          <div class="tier-card">
-            <h3>${t.name}</h3>
-            <div class="price">${t.price} SparkCoins / month</div>
-            <ul>${(t.perks || []).map(p => `<li>${p}</li>`).join('')}</ul>
-            ${subscribed ? '<button disabled>Subscribed</button>' : 
-              `<button onclick="doSubscribe('${t.id}', ${t.price})">Subscribe</button>`}
-          </div>
-        `).join('');
+      (async () => {
+        const page = document.getElementById('creatorPage');
+        page.innerHTML = '<div class="empty-state">Loading creator...</div>';
+        try {
+          const profile = await LonelyFansAuth.getProfile(creatorId);
+          if (!profile) {
+            page.innerHTML = '<div class="empty-state">Creator not found.</div>';
+            return;
+          }
+          const tiers = await LonelyFansAuth.getCreatorTiers(creatorId) || [];
+          const subscribed = session && await LonelyFansAuth.isSubscribed(session.id, creatorId);
+
+          page.style.setProperty('--theme', profile.themeColor || '#ff6b6b');
+          page.style.setProperty('--accent', profile.accentColor || '#ff8e8e');
+
+          let tiersHtml = tiers.length === 0 
+            ? '<p class="note">No subscription tiers set yet.</p>'
+            : tiers.map(t => `
+              <div class="tier-card">
+                <h3>${t.name}</h3>
+                <div class="price">${t.price} SparkCoins / month</div>
+                <ul>${(t.perks || []).map(p => `<li>${p}</li>`).join('')}</ul>
+                ${subscribed ? '<button disabled>Subscribed</button>' : 
+                  `<button onclick="doSubscribe('${t.id}', ${t.price})">Subscribe</button>`}
+              </div>
+            `).join('');
+
+          page.innerHTML = `
+            ${profile.bannerUrl ? `<div class="banner" style="background-image:url('${profile.bannerUrl}')"></div>` : ''}
+            <div class="info-card">
+              <h1>${profile.displayName || 'Creator'}</h1>
+              <p>${profile.bio || 'No bio yet.'}</p>
+              <p><a href="live.html?id=${creatorId}" class="btn">Watch Live</a></p>
+              <h2>Subscription Tiers</h2>
+              <div class="tiers">${tiersHtml}</div>
+            </div>
+          `;
+          document.title = (profile.displayName || 'Creator') + ' – Lonely Fans';
+        } catch (err) {
+          page.innerHTML = `<div class="empty-state">Failed to load creator: ${err.message}</div>`;
+        }
+      })();
       }
-
-      page.innerHTML = `
-        ${profile.bannerUrl ? `<div class="banner" style="background-image:url('${profile.bannerUrl}')"></div>` : ''}
-        <div class="info-card">
-          <h1>${profile.displayName || 'Creator'}</h1>
-          <p>${profile.bio || ''}</p>
-          ${LonelyFansAuth.isLive(creatorId) ? `<p><a href="live.html?id=${creatorId}"><button>Watch Live</button></a></p>` : ''}
-          <h2>Subscription Tiers</h2>
-          <div class="tiers">${tiersHtml}</div>
-        </div>
-      `;
-      document.title = (profile.displayName || 'Creator') + ' – Lonely Fans';
-    })();
-
-    function doSubscribe(tierId, price) {
       if (!session) {
         alert('Please log in to subscribe');
         location.href = 'login.html';
