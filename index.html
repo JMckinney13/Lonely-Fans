@@ -55,14 +55,15 @@
     }
     .age-gate-card {
       background: var(--card);
-      padding: 2.5rem;
+      padding: 2.5rem 2rem;
       border-radius: 16px;
-      max-width: 420px;
+      max-width: 400px;
       text-align: center;
-      border: 1px solid #333;
+      border: 1px solid var(--border);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
     }
-    .age-gate h2 { margin-bottom: 1rem; font-size: 1.5rem; }
-    .age-gate p { color: var(--muted); margin-bottom: 1.5rem; line-height: 1.5; }
+    .age-gate h2 { margin-bottom: 0.6rem; font-size: 1.6rem; }
+    .age-gate p { color: var(--muted); margin-bottom: 1.8rem; line-height: 1.45; font-size: 0.95rem; }
     button, .btn {
       background: var(--accent);
       color: white;
@@ -119,8 +120,7 @@
   <div id="ageGate" class="age-gate">
     <div class="age-gate-card">
       <h2>Adults Only</h2>
-      <p>Lonely Fans contains explicit adult content. You must be 18 years or older to enter.</p>
-      <p style="font-size: 0.9rem;">This is a prototype. Full commercial age verification (ID / facial estimation) will be required before launch.</p>
+      <p>This site contains explicit adult content. You must be 18 or older to continue.</p>
       <div>
         <button onclick="enterSite()">I am 18 or older</button>
         <button class="secondary" onclick="leaveSite()">Leave</button>
