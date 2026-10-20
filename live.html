@@ -62,6 +62,20 @@
     .mod-list li button { width: auto; margin: 0; padding: 0.25rem 0.6rem; font-size: 0.8rem; }
     .mod-notice { background: #3b1d1d; color: #fecaca; border-radius: 8px; padding: 0.5rem 0.7rem; font-size: 0.85rem; margin: 0 0 0.4rem; }
     .mod-notice[hidden] { display: none; }
+    .tip-btn { width: auto; margin: 0; padding: 0.6rem 0.7rem; background: #b45309; }
+    .tip-btn:hover { background: #d97706; }
+    .tip-btn[hidden] { display: none; }
+    .quick-tip { background: #1a1f2e; border-radius: 8px; padding: 0.5rem; margin-top: 0.4rem; }
+    .quick-tip[hidden] { display: none; }
+    .quick-tip .row { display: flex; gap: 0.3rem; align-items: center; flex-wrap: wrap; }
+    .quick-tip button { width: auto; margin: 0; padding: 0.4rem 0.7rem; font-size: 0.85rem; }
+    .quick-tip input { flex: 1; min-width: 70px; padding: 0.4rem 0.6rem; }
+    .quick-tip .message { margin: 0.3rem 0 0; font-size: 0.8rem; }
+    .leaderboard { background: #1a1a22; border: 1px solid #333; border-radius: 10px; padding: 0.6rem 0.8rem; margin-bottom: 0.8rem; font-size: 0.85rem; }
+    .leaderboard h4 { margin: 0 0 0.3rem; font-size: 0.85rem; }
+    .leaderboard ol { margin: 0; padding-left: 1.3rem; }
+    .leaderboard li { display: flex; justify-content: space-between; padding: 1px 0; }
+    .leaderboard li span:last-child { color: var(--muted); }
   </style>
 </head>
 <body>
@@ -105,6 +119,7 @@
     </div>
     <div class="side-panel">
       <div class="goal-box" id="goalBox"><div class="empty">Loading goal…</div></div>
+      <div class="leaderboard" id="leaderboard"><h4>🏆 Top tippers</h4><div class="note">Loading…</div></div>
       <div class="chat-messages" id="chat" aria-live="polite"><div class="empty">Connecting to chat…</div></div>
       <p id="modNotice" class="mod-notice" role="alert" hidden></p>
       <p id="chatError" class="message chat-error" role="alert"></p>
@@ -112,7 +127,18 @@
         <button type="button" class="emoji-btn" id="emojiToggle" aria-label="Insert emoji">😊</button>
         <input type="text" id="chatInput" placeholder="Say something... or !command" maxlength="500" autocomplete="off">
         <button type="submit" id="sendBtn">Send</button>
+        <button type="button" class="tip-btn" id="tipToggle" aria-label="Tip the creator" title="Tip the creator" hidden>💰</button>
       </form>
+      <div id="quickTip" class="quick-tip" hidden>
+        <div class="row">
+          <button type="button" data-tip="10">10</button>
+          <button type="button" data-tip="50">50</button>
+          <button type="button" data-tip="100">100</button>
+          <input type="number" id="quickTipAmount" min="1" step="1" placeholder="Other">
+          <button type="button" id="quickTipSend">Tip</button>
+        </div>
+        <p id="quickTipMsg" class="message" role="status"></p>
+      </div>
       <div id="emojiPicker" class="emoji-picker" hidden>
         <button type="button">❤️</button><button type="button">🔥</button><button type="button">😂</button>
         <button type="button">😍</button><button type="button">👍</button><button type="button">🎉</button>
@@ -225,6 +251,7 @@
         document.activeElement && document.activeElement.blur();
         await renderGoal();
         showOk('goalMsg', `Thanks! You tipped ${amount} SparkCoins.`);
+        renderLeaderboard();
       } catch (err) {
         btn.disabled = false; btn.textContent = 'Tip';
         showError('goalMsg', err.message);
@@ -321,6 +348,37 @@
         }
         showModNotice('');
       } catch {}
+    }
+
+    async function renderLeaderboard() {
+      const el = $('leaderboard');
+      try {
+        const top = await LonelyFansAuth.api(`/tips/${encodeURIComponent(creatorId)}/top`);
+        el.innerHTML = '<h4>🏆 Top tippers</h4>' + (top.length
+          ? `<ol>${top.map(t => `<li><span>${esc(t.username)}</span><span>${Number(t.total).toLocaleString()} SC</span></li>`).join('')}</ol>`
+          : '<div class="note">No tips yet — be the first!</div>');
+      } catch (err) {
+        el.innerHTML = `<h4>🏆 Top tippers</h4><div class="note">Couldn't load: ${esc(err.message)}</div>`;
+      }
+    }
+
+    async function quickTip(amount) {
+      if (!(amount > 0) || !Number.isInteger(amount)) return showError('quickTipMsg', 'Enter a whole number of SparkCoins.');
+      if (!confirm(`Tip ${amount.toLocaleString()} SparkCoins?`)) return;
+      const btns = $('quickTip').querySelectorAll('button');
+      btns.forEach(b => b.disabled = true);
+      try {
+        const r = await LonelyFansAuth.api('/tips', { method: 'POST', body: JSON.stringify({ creatorId, amount }) });
+        $('quickTipAmount').value = '';
+        showOk('quickTipMsg', `Thanks! You tipped ${amount.toLocaleString()} SparkCoins (balance ${r.balance.toLocaleString()}).`);
+        renderLeaderboard();
+      } catch (err) {
+        const el = $('quickTipMsg');
+        el.className = 'message';
+        el.innerHTML = `${esc(err.message)}${/SparkCoins/.test(err.message) ? ' <a href="wallet.html">Buy SparkCoins</a>' : ''}`;
+      } finally {
+        btns.forEach(b => b.disabled = false);
+      }
     }
 
     async function renderChat() {
@@ -421,6 +479,13 @@
       $('chatInput').focus();
     });
     $('chatForm').addEventListener('submit', sendChat);
+    $('tipToggle').addEventListener('click', () => { $('quickTip').hidden = !$('quickTip').hidden; });
+    $('quickTip').addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      if (b.dataset.tip) quickTip(parseInt(b.dataset.tip, 10));
+      else if (b.id === 'quickTipSend') quickTip(parseInt($('quickTipAmount').value, 10));
+    });
 
     if (!creatorId) {
       document.querySelector('.live-layout').innerHTML =
@@ -434,7 +499,9 @@
         $('sendBtn').onclick = () => { location.href = 'login.html'; };
       }
       if (isCreator) initCreatorControls();
-      else if (session) { checkModStatus(); setInterval(checkModStatus, 15000); }
+      else if (session) { checkModStatus(); setInterval(checkModStatus, 15000); $('tipToggle').hidden = false; }
+      renderLeaderboard();
+      setInterval(renderLeaderboard, 10000);
       loadHeader();
       loadEmotes().then(renderGoal);
       startChatStream();

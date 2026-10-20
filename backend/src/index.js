@@ -97,6 +97,11 @@ const SCHEMA = `
   UPDATE subscriptions SET expires_at = to_char(started_at::timestamp + interval '30 days', 'YYYY-MM-DD HH24:MI:SS')
     WHERE expires_at IS NULL;
   CREATE INDEX IF NOT EXISTS idx_subs_fan ON subscriptions(fan_id, creator_id);
+  CREATE TABLE IF NOT EXISTS tips (
+    id TEXT PRIMARY KEY, creator_id TEXT NOT NULL REFERENCES users(id), fan_id TEXT NOT NULL REFERENCES users(id),
+    amount INTEGER NOT NULL, source TEXT NOT NULL, created_at TEXT DEFAULT ${NOW}
+  );
+  CREATE INDEX IF NOT EXISTS idx_tips_creator ON tips(creator_id, fan_id);
   CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_chat_creator ON chat_messages(creator_id, created_at);
 `;
@@ -435,10 +440,44 @@ app.post('/api/goals/tip', authMiddleware, h(async (req, res) => {
                    WHERE creator_id = $2`, [amount, creatorId]);
     await c.query(INSERT_TX, [uuid(), req.user.id, 'tip', -amount, 'Tipped a creator goal']);
     await c.query(INSERT_TX, [uuid(), creatorId, 'earning', amount, 'Goal tip received']);
+    await c.query('INSERT INTO tips (id, creator_id, fan_id, amount, source) VALUES ($1, $2, $3, $4, $5)', [uuid(), creatorId, req.user.id, amount, 'goal']);
     await c.query('INSERT INTO chat_messages (id, creator_id, username, text) VALUES ($1, $2, $3, $4)',
       [uuid(), creatorId, 'Bot', `${tipper ? tipper.email.split('@')[0] : 'Someone'} tipped ${amount} SparkCoins!`]);
   });
   res.json({ ok: true });
+}));
+
+// Quick tip from live chat (separate from the goal)
+app.post('/api/tips', authMiddleware, h(async (req, res) => {
+  const { creatorId, amount } = req.body;
+  if (!creatorId || typeof creatorId !== 'string') return res.status(400).json({ error: 'Missing creator' });
+  if (!isPosInt(amount) || amount > 100000) return res.status(400).json({ error: 'Tip must be a whole number from 1 to 100,000' });
+  if (creatorId === req.user.id) return res.status(400).json({ error: "You can't tip yourself" });
+  const creator = await one("SELECT id FROM users WHERE id = $1 AND role = 'creator'", [creatorId]);
+  if (!creator) return res.status(404).json({ error: 'Creator not found' });
+  const mod = await one('SELECT type FROM chat_moderation WHERE creator_id = $1 AND user_id = $2', [creatorId, req.user.id]);
+  if (mod && mod.type === 'ban') return res.status(403).json({ error: 'You are banned from this chat' });
+  const balance = await tx(async (c) => {
+    const wallet = await one('SELECT balance FROM wallets WHERE user_id = $1 FOR UPDATE', [req.user.id], c);
+    if (!wallet || wallet.balance < amount) throw new HttpError(400, 'Not enough SparkCoins');
+    const tipper = await one('SELECT email FROM users WHERE id = $1', [req.user.id], c);
+    await c.query('UPDATE wallets SET balance = balance - $1 WHERE user_id = $2', [amount, req.user.id]);
+    await c.query('UPDATE wallets SET balance = balance + $1 WHERE user_id = $2', [amount, creatorId]);
+    await c.query(INSERT_TX, [uuid(), req.user.id, 'tip', -amount, 'Tipped in live chat']);
+    await c.query(INSERT_TX, [uuid(), creatorId, 'earning', amount, 'Chat tip received']);
+    await c.query('INSERT INTO tips (id, creator_id, fan_id, amount, source) VALUES ($1, $2, $3, $4, $5)', [uuid(), creatorId, req.user.id, amount, 'chat']);
+    await c.query('INSERT INTO chat_messages (id, creator_id, username, text) VALUES ($1, $2, $3, $4)',
+      [uuid(), creatorId, 'Bot', `💰 ${tipper.email.split('@')[0]} tipped ${amount} SparkCoins!`]);
+    return (await one('SELECT balance FROM wallets WHERE user_id = $1', [req.user.id], c)).balance;
+  });
+  res.json({ ok: true, balance });
+}));
+
+// Top 5 tippers for a creator (chat + goal tips); public like the chat
+app.get('/api/tips/:creatorId/top', h(async (req, res) => {
+  const rows = await q(`SELECT u.email, SUM(t.amount)::int AS total FROM tips t JOIN users u ON u.id = t.fan_id
+    WHERE t.creator_id = $1 GROUP BY u.email ORDER BY total DESC, MIN(t.created_at) LIMIT 5`, [req.params.creatorId]);
+  res.json(rows.map(r => ({ username: r.email.split('@')[0], total: r.total })));
 }));
 
 // Chat
